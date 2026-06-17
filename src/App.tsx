@@ -35,7 +35,17 @@ import {
   CheckCircle,
   Eye,
   MenuSquare,
-  Sparkle
+  Sparkle,
+  Lock,
+  Mail,
+  EyeOff,
+  User as UserIcon,
+  Image as ImageIcon,
+  Percent,
+  Tags,
+  Terminal,
+  Hamburger,
+  CupSoda
 } from "lucide-react";
 import { CATEGORIES, INITIAL_MENU_ITEMS, INITIAL_REVIEWS, INITIAL_USERS, MenuItem, Category, Review, User } from "./data";
 
@@ -66,6 +76,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : ["classic-wow", "retro-strawberry"];
   });
 
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem("wow_dark_mode");
+    return saved ? JSON.parse(saved) : false;
+  });
+
   // Sync to localStorage on any write
   useEffect(() => {
     localStorage.setItem("wow_menu_items", JSON.stringify(menuItems));
@@ -86,6 +101,15 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("wow_favorites", JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_dark_mode", JSON.stringify(isDarkMode));
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [isDarkMode]);
 
   // --- Aesthetic Navigation Tabs ---
   // "home" displays the full interactive digital catalog.
@@ -113,12 +137,182 @@ export default function App() {
 
   // --- Admin Mode States ---
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState<boolean>(false);
-  const [adminUser, setAdminUser] = useState<User | null>(() => {
-    return INITIAL_USERS[0]; // Pre-authenticated with 'Super Admin' for testing convenience
+  
+  const [adminsList, setAdminsList] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_admins");
+    if (saved) return JSON.parse(saved);
+    const initialAdmins = [
+      {
+        "id": 1,
+        "username": "admin",
+        "email": "admin@wowburger.com",
+        "password": "admin123",
+        "role": "Super Admin"
+      }
+    ];
+    localStorage.setItem("wow_admins", JSON.stringify(initialAdmins));
+    return initialAdmins;
   });
+
+  const [loggedInAdmin, setLoggedInAdmin] = useState<any | null>(() => {
+    const saved = localStorage.getItem("wow_logged_in_admin");
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [adminUser, setAdminUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem("wow_logged_in_admin");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        id: `usr-${parsed.id}`,
+        username: parsed.username,
+        fullName: parsed.role,
+        role: parsed.role as any,
+        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
+      };
+    }
+    return null;
+  });
+
+  const [loginLogs, setLoginLogs] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_login_logs");
+    if (saved) return JSON.parse(saved);
+    const initialLogs = [
+      { id: 1, username: "admin", timestamp: "2026-06-17 03:00:22", status: "Success", ip: "192.168.1.45" },
+      { id: 2, username: "system-automated", timestamp: "2026-06-17 01:15:00", status: "Success", ip: "127.0.0.1" }
+    ];
+    localStorage.setItem("wow_login_logs", JSON.stringify(initialLogs));
+    return initialLogs;
+  });
+
+  const [offers, setOffers] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_offers");
+    if (saved) return JSON.parse(saved);
+    const initialOffers = [
+      { id: "off-1", title: "Buy 1 Get 1 Wow Classic", couponCode: "WOWBOGO", discount: "50% Off Second", status: "Active" },
+      { id: "off-2", title: "Free Strawberry Shaker with Bacon BBQ Inferno", couponCode: "SHAKEIT", discount: "Free Shake", status: "Active" }
+    ];
+    localStorage.setItem("wow_offers", JSON.stringify(initialOffers));
+    return initialOffers;
+  });
+
+  const [banners, setBanners] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_banners");
+    if (saved) return JSON.parse(saved);
+    const initialBanners = [
+      { id: "ban-1", title: "Unrivaled Beef & Shakes Combo", subtitle: "Get our classic double patty with shake for only 650 ETB!", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80", status: "Published" }
+    ];
+    localStorage.setItem("wow_banners", JSON.stringify(initialBanners));
+    return initialBanners;
+  });
+
+  const [mediaImages, setMediaImages] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_media_images");
+    if (saved) return JSON.parse(saved);
+    const initialImages = [
+      { id: "img-1", title: "Classic Gourmet Burger", url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "340 KB" },
+      { id: "img-2", title: "Crispy Sizzling Bacon Patty", url: "https://images.unsplash.com/photo-1553979459-d2229ba7433b?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "290 KB" },
+      { id: "img-3", title: "Fresh Garden Harvest Greens", url: "https://images.unsplash.com/photo-1525059696034-4967a8e1dca2?auto=format&fit=crop&w=600&q=80", resolution: "1000x667", size: "185 KB" },
+      { id: "img-4", title: "Golden Handcut Chips Tower", url: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "410 KB" },
+      { id: "img-5", title: "Aesthetic Strawberry Shaker", url: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "260 KB" },
+      { id: "img-6", title: "Rich Chocolate Fondant Cake", url: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "380 KB" }
+    ];
+    localStorage.setItem("wow_media_images", JSON.stringify(initialImages));
+    return initialImages;
+  });
+
+  const [ingredients, setIngredients] = useState<any[]>(() => {
+    const saved = localStorage.getItem("wow_ingredients");
+    if (saved) return JSON.parse(saved);
+    const initialIngredients = [
+      { id: "ingr-1", name: "Premium Angus Beef Patty", quantity: 240, minAmount: 50, unit: "pcs", supplier: "Addis Livestock Direct", status: "In Stock" },
+      { id: "ingr-2", name: "Spiced Cheddar Cheese Slices", quantity: 450, minAmount: 100, unit: "slices", supplier: "Dairy Farms", status: "In Stock" },
+      { id: "ingr-3", name: "Artisanal Brioche Buns", quantity: 38, minAmount: 40, unit: "pcs", supplier: "Local Sourdough Bakery", status: "Low Stock" },
+      { id: "ingr-4", name: "Applewood Smoked Bacon", quantity: 180, minAmount: 30, unit: "slices", supplier: "Addis Livestock Direct", status: "In Stock" },
+      { id: "ingr-5", name: "Organic Ripe Strawberries", quantity: 15, minAmount: 10, unit: "kg", supplier: "Shola Organic Groceries", status: "In Stock" },
+      { id: "ingr-6", name: "Belgian Sweet Dark Chocolate", quantity: 2, minAmount: 5, unit: "kg", supplier: "Fine Importers LLC", status: "Out of Stock" }
+    ];
+    localStorage.setItem("wow_ingredients", JSON.stringify(initialIngredients));
+    return initialIngredients;
+  });
+
   const [selectedRoleForLogin, setSelectedRoleForLogin] = useState<"Super Admin" | "Admin" | "Menu Manager" | "Viewer">("Super Admin");
-  const [adminActiveSection, setAdminActiveSection] = useState<"dashboard" | "categories" | "items" | "reviews" | "users" | "settings">("dashboard");
+  const [adminActiveSection, setAdminActiveSection] = useState<
+    | "dashboard"
+    | "categories"
+    | "items"
+    | "ingredients"
+    | "images"
+    | "offers"
+    | "banners"
+    | "reviews"
+    | "settings"
+    | "users"
+    | "logs"
+    | "logout"
+  >("dashboard");
   const [adminSearch, setAdminSearch] = useState<string>("");
+
+  // --- Login Form State Parameters ---
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loginShowPassword, setLoginShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginSuccessMsg, setLoginSuccessMsg] = useState("");
+
+  // Form states for custom sections
+  const [offerFormTitle, setOfferFormTitle] = useState("");
+  const [offerFormCoupon, setOfferFormCoupon] = useState("");
+  const [offerFormDiscount, setOfferFormDiscount] = useState("");
+  const [offerFormStatus, setOfferFormStatus] = useState("Active");
+
+  const [bannerFormTitle, setBannerFormTitle] = useState("");
+  const [bannerFormSubtitle, setBannerFormSubtitle] = useState("");
+  const [bannerFormImage, setBannerFormImage] = useState("");
+  const [bannerFormStatus, setBannerFormStatus] = useState("Published");
+
+  const [imageFormTitle, setImageFormTitle] = useState("");
+  const [imageFormUrl, setImageFormUrl] = useState("");
+
+  const [ingFormName, setIngFormName] = useState("");
+  const [ingFormQty, setIngFormQty] = useState<number>(100);
+  const [ingFormMin, setIngFormMin] = useState<number>(30);
+  const [ingFormUnit, setIngFormUnit] = useState("pcs");
+  const [ingFormSupplier, setIngFormSupplier] = useState("");
+
+  useEffect(() => {
+    if (loggedInAdmin) {
+      localStorage.setItem("wow_logged_in_admin", JSON.stringify(loggedInAdmin));
+    } else {
+      localStorage.removeItem("wow_logged_in_admin");
+    }
+  }, [loggedInAdmin]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_admins", JSON.stringify(adminsList));
+  }, [adminsList]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_login_logs", JSON.stringify(loginLogs));
+  }, [loginLogs]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_offers", JSON.stringify(offers));
+  }, [offers]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_banners", JSON.stringify(banners));
+  }, [banners]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_media_images", JSON.stringify(mediaImages));
+  }, [mediaImages]);
+
+  useEffect(() => {
+    localStorage.setItem("wow_ingredients", JSON.stringify(ingredients));
+  }, [ingredients]);
 
   // --- Admin CRUD Form states ---
   // Category Form
@@ -297,13 +491,92 @@ export default function App() {
     setTimeout(() => setReviewSubmitMessage(""), 3500);
   };
 
+  // --- Admin Login Verify action ---
+  const handleAdminVerifyLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setLoginSuccessMsg("");
+
+    if (!loginUsername.trim()) {
+      setLoginError("Username is required");
+      return;
+    }
+    if (!loginPassword.trim()) {
+      setLoginError("Password is required");
+      return;
+    }
+
+    // Lookup credentials
+    const foundAdmin = adminsList.find(
+      (a) =>
+        (a.username.toLowerCase() === loginUsername.trim().toLowerCase() ||
+          a.email?.toLowerCase() === loginUsername.trim().toLowerCase()) &&
+        a.password === loginPassword.trim()
+    );
+
+    if (!foundAdmin) {
+      setLoginError("Invalid username or password");
+      return;
+    }
+
+    setIsLoggingIn(true);
+    
+    // Simulate successful login sequence
+    setTimeout(() => {
+      setIsLoggingIn(false);
+      setLoginSuccessMsg("Access Granted! Fetching workspace secure tokens...");
+      
+      setLoggedInAdmin(foundAdmin);
+      setAdminUser({
+        id: `usr-${foundAdmin.id}`,
+        username: foundAdmin.username,
+        fullName: foundAdmin.role,
+        role: foundAdmin.role as any,
+        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"
+      });
+
+      // Append code to login logs
+      const nextLogId = loginLogs.length > 0 ? Math.max(...loginLogs.map(l => l.id)) + 1 : 1;
+      const newLog = {
+        id: nextLogId,
+        username: foundAdmin.username,
+        timestamp: new Date().toLocaleString(),
+        status: "Success",
+        ip: "192.168.1.100"
+      };
+      setLoginLogs(prev => [newLog, ...prev]);
+
+      showToast("Welcome back! Login Successful 🍔");
+
+      // Reset fields
+      setLoginUsername("");
+      setLoginPassword("");
+    }, 1500);
+  };
+
   // --- Admin Login Verification ---
   const handleAdminLogin = (role: "Super Admin" | "Admin" | "Menu Manager" | "Viewer") => {
-    const matched = users.find(u => u.role === role);
-    if (matched) {
-      setAdminUser(matched);
-      showToast(`Logged in successfully as ${matched.fullName} (${matched.role})`);
+    let matched = adminsList.find((a) => a.role === role);
+    if (!matched) {
+      const newAdmin = {
+        id: adminsList.length + 1,
+        username: role.toLowerCase().replace(/\s+/g, ""),
+        email: `${role.toLowerCase().replace(/\s+/g, "")}@wowburger.com`,
+        password: "admin123",
+        role: role
+      };
+      setAdminsList((prev) => [...prev, newAdmin]);
+      matched = newAdmin;
     }
+    setLoggedInAdmin(matched);
+    setAdminUser({
+      id: `usr-${matched.id}`,
+      username: matched.username,
+      fullName: matched.username.toUpperCase(),
+      role: matched.role as any,
+      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
+    });
+    showToast(`Session shifted: now logged in as ${matched.username} (${matched.role})`);
   };
 
   // --- Admin Dashboard Statistics ---
@@ -311,19 +584,17 @@ export default function App() {
     const totalCategories = categories.length;
     const totalMenuItems = menuItems.length;
     const availableItems = menuItems.filter(item => item.isAvailable).length;
-    const averageRating = menuItems.length > 0 
-      ? parseFloat((menuItems.reduce((acc, curr) => acc + curr.rating, 0) / menuItems.length).toFixed(1))
-      : 4.8;
+    const activeOffers = offers.length;
     const totalReviews = reviews.length;
 
     return {
       totalCategories,
       totalMenuItems,
       availableItems,
-      averageRating,
+      activeOffers,
       totalReviews
     };
-  }, [menuItems, categories, reviews]);
+  }, [menuItems, categories, reviews, offers]);
 
   // --- Admin Permission Check Helper ---
   // Real authorization levels to showcase enterprise-grade security logic
@@ -603,6 +874,26 @@ export default function App() {
 
           {/* Desktop Filter Indicators or Action buttons */}
           <div className="flex items-center gap-3">
+            {/* Dark Mode Toggle Button */}
+            <button
+              onClick={() => setIsDarkMode(prev => !prev)}
+              className="px-3.5 py-2 rounded-xl text-[#FFC107] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 transition-all flex items-center gap-2 text-xs font-bold shadow-md cursor-pointer"
+              id="theme-toggle-btn"
+              title={isDarkMode ? "Toggle Light Mode" : "Toggle Dark Mode"}
+            >
+              {isDarkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline-block select-none">Light Mode</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-[#FFC107]" />
+                  <span className="hidden sm:inline-block select-none">Dark Mode</span>
+                </>
+              )}
+            </button>
+
             <button
               onClick={() => setIsAdminPortalOpen(!isAdminPortalOpen)}
               className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300 flex items-center gap-2 border ${
@@ -1012,7 +1303,7 @@ export default function App() {
                     }`}
                   >
                     <div className={`p-1 rounded-full transition-colors ${activeTab === "food" ? "bg-red-50" : ""}`}>
-                      <Flame className="w-5 h-5" />
+                      <Hamburger className="w-5 h-5" />
                     </div>
                     <span className="text-[9px] uppercase tracking-wider font-mono">Food</span>
                   </button>
@@ -1025,7 +1316,7 @@ export default function App() {
                     }`}
                   >
                     <div className={`p-1 rounded-full transition-colors ${activeTab === "drinks" ? "bg-red-50" : ""}`}>
-                      <Star className="w-5 h-5" />
+                      <CupSoda className="w-5 h-5" />
                     </div>
                     <span className="text-[9px] uppercase tracking-wider font-mono">Drinks</span>
                   </button>
@@ -1051,9 +1342,166 @@ export default function App() {
               </nav>
 
             </motion.div>
+          ) : !loggedInAdmin ? (
+            // ====================================================================
+            //                        2. ADMIN LOGIN GATEKEEPER                    //
+            // ====================================================================
+            <motion.div
+              key="admin-login-page"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="flex-1 flex items-center justify-center min-h-[85vh] px-4 py-12 md:py-24 bg-neutral-50 dark:bg-stone-950 transition-colors"
+              id="admin-login-root"
+            >
+              <div className="max-w-md w-full bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-[2.5rem] shadow-2xl p-8 md:p-10 space-y-6 relative overflow-hidden">
+                {/* Visual Background Accent Glows */}
+                <div className="absolute top-[-50px] right-[-50px] w-48 h-48 bg-[#FFC107]/10 dark:bg-[#FFC107]/5 rounded-full blur-[80px] pointer-events-none" />
+                <div className="absolute bottom-[-50px] left-[-50px] w-48 h-48 bg-[#E53935]/10 dark:bg-[#E53935]/5 rounded-full blur-[80px] pointer-events-none" />
+
+                {/* LOGO SECTION */}
+                <div className="flex flex-col items-center text-center space-y-3.5 relative z-10">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#E53935] to-[#FFC107] flex items-center justify-center shadow-lg relative">
+                    <Flame className="w-8 h-8 text-white animate-pulse" />
+                    <span className="absolute -top-1.5 -right-1.5 text-xs select-none">🍔</span>
+                  </div>
+                  <div>
+                    <h2 className="font-display font-black text-2xl md:text-3xl tracking-tight text-neutral-900 dark:text-white">
+                      Wow Burger Admin Panel
+                    </h2>
+                    <p className="text-xs text-neutral-500 dark:text-stone-400 mt-2 leading-relaxed">
+                      Sign in to manage menu items, categories, offers, and restaurant settings.
+                    </p>
+                  </div>
+                </div>
+
+                {/* LOGIN FORM */}
+                <form onSubmit={handleAdminVerifyLogin} className="space-y-4 relative z-10">
+                  {/* Validation Error Message */}
+                  {loginError && (
+                    <div className="p-3 bg-red-50 dark:bg-rose-950/20 text-xs text-[#E53935] dark:text-rose-400 font-bold rounded-2xl border border-red-200/60 dark:border-rose-900/40 flex items-center gap-2 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-[#E53935]" />
+                      <span>{loginError}</span>
+                    </div>
+                  )}
+
+                  {/* Success Message */}
+                  {loginSuccessMsg && (
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 text-xs text-emerald-700 dark:text-emerald-400 font-bold rounded-2xl border border-emerald-250 dark:border-emerald-900/40 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      <span>{loginSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Username or Email Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-stone-400">
+                      Username or Email
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                        <Mail className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={loginUsername}
+                        onChange={(e) => setLoginUsername(e.target.value)}
+                        placeholder="admin or admin@wowburger.com"
+                        disabled={isLoggingIn}
+                        className="w-full bg-neutral-50 dark:bg-stone-900/60 text-neutral-900 dark:text-white text-sm pl-11 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-stone-805 focus:outline-none focus:ring-4 focus:ring-[#FFC107]/10 focus:border-[#FFC107] transition-all font-sans"
+                        id="login-username-input"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-stone-400">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <input
+                        type={loginShowPassword ? "text" : "password"}
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="••••••••"
+                        disabled={isLoggingIn}
+                        className="w-full bg-neutral-50 dark:bg-stone-900/60 text-neutral-900 dark:text-white text-sm pl-11 pr-10 py-3 rounded-2xl border border-neutral-200 dark:border-stone-805 focus:outline-none focus:ring-4 focus:ring-[#FFC107]/10 focus:border-[#FFC107] transition-all font-sans"
+                        id="login-password-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setLoginShowPassword(!loginShowPassword)}
+                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-stone-200 cursor-pointer"
+                        title={loginShowPassword ? "Hide Password" : "Show Password"}
+                      >
+                        {loginShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Remember Me & Links */}
+                  <div className="flex items-center justify-between pt-1 select-none">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded border-neutral-300 dark:border-stone-700 text-[#E53935] focus:ring-[#E53935] cursor-pointer"
+                      />
+                      <span className="text-xs text-neutral-500 dark:text-stone-400">Remember Me</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showToast("Password recovery email triggered inside simulated environment! 📨");
+                      }}
+                      className="text-xs text-[#E53935] hover:underline font-bold"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+
+                  {/* Action Button */}
+                  <button
+                    type="submit"
+                    disabled={isLoggingIn}
+                    className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#E53935] to-[#FFC107] text-white font-extrabold text-xs uppercase tracking-wider shadow-lg hover:shadow-xl hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80 font-sans"
+                    id="btn-login-submit"
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Verifying Session...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Enter Dashboard</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Back Link */}
+                <div className="text-center pt-1 relative z-10 font-sans">
+                  <button
+                    onClick={() => setIsAdminPortalOpen(false)}
+                    className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-stone-200 transition-all inline-flex items-center gap-1.5 hover:underline cursor-pointer"
+                    id="btn-return-dining"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Return to Dining App</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           ) : (
             // ====================================================================
-            //                        2. ADMIN DASHBOARD SYSTEM                     //
+            //                        3. ADMIN DASHBOARD SYSTEM                     //
             // ====================================================================
             <motion.div
               key="admin-dashboard-page"
@@ -1113,17 +1561,32 @@ export default function App() {
                       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
                       { id: "categories", label: "Categories", icon: MenuSquare },
                       { id: "items", label: "Menu Items", icon: MenuIcon },
+                      { id: "ingredients", label: "Ingredients", icon: Sparkle },
+                      { id: "images", label: "Images", icon: ImageIcon },
+                      { id: "offers", label: "Offers", icon: Percent },
+                      { id: "banners", label: "Banners", icon: Tags },
                       { id: "reviews", label: "Reviews", icon: MessageSquare },
-                      { id: "users", label: "User Accounts", icon: UsersIcon },
-                      { id: "settings", label: "Settings", icon: SettingsIcon }
+                      { id: "settings", label: "Restaurant Settings", icon: SettingsIcon },
+                      { id: "users", label: "Admin Users", icon: UsersIcon },
+                      { id: "logs", label: "Login Logs", icon: Terminal },
+                      { id: "logout", label: "Logout (Exit)", icon: LogOut }
                     ].map((sec) => {
                       const IconComponent = sec.icon;
                       const isActive = adminActiveSection === sec.id;
                       return (
                         <button
                           key={sec.id}
-                          onClick={() => setAdminActiveSection(sec.id as any)}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all ${
+                          onClick={() => {
+                            if (sec.id === "logout") {
+                              setLoggedInAdmin(null);
+                              setAdminUser(null);
+                              setAdminActiveSection("dashboard");
+                              showToast("Logged out successfully. Have a nice day! 🚪");
+                            } else {
+                              setAdminActiveSection(sec.id as any);
+                            }
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer ${
                             isActive
                               ? "bg-[#E53935] text-white shadow-md font-extrabold"
                               : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
@@ -2086,7 +2549,473 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                
+
+                {/* ======================= TABS CONTENT: INGREDIENTS ======================= */}
+                {adminActiveSection === "ingredients" && (
+                  <div className="space-y-6 animate-fade-in" id="sec-ingredients">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
+                      <div className="space-y-1">
+                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">WOW Ingredients Inventory</h3>
+                        <p className="text-xs text-neutral-400 dark:text-stone-450">Track and replenish essential kitchen stock counts in real-time.</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            checkPermissionAndAction(() => {
+                              const name = prompt("Enter ingredient name:");
+                              if (!name) return;
+                              const qty = parseInt(prompt("Enter initial quantity:") || "100");
+                              const min = parseInt(prompt("Enter minimal warning threshold:") || "30");
+                              const unit = prompt("Enter unit (e.g., pcs, kg, bags, liters):") || "pcs";
+                              const supplier = prompt("Enter supplier brand name:") || "Premium Foods Inc.";
+                              
+                              const nextId = ingredients.length > 0 ? Math.max(...ingredients.map(i => i.id)) + 1 : 1;
+                              const newIng = {
+                                id: nextId,
+                                name,
+                                quantity: qty,
+                                minStock: min,
+                                unit,
+                                supplier,
+                                status: (qty <= 0 ? "Out of Stock" : qty <= min ? "Low Stock" : "Good") as any
+                              };
+                              setIngredients(prev => [...prev, newIng]);
+                              showToast(`Ingredient ${name} added perfectly! 🥗`);
+                            });
+                          }}
+                          className="px-3.5 py-2 bg-[#E11D48] hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center gap-1 cursor-pointer font-sans"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Stock Item</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-2 bg-white dark:bg-stone-900 rounded-3xl border border-neutral-200 dark:border-stone-800 shadow-sm overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-neutral-50 dark:bg-stone-800/50 border-b border-neutral-200 dark:border-stone-700/60 font-bold text-neutral-500 dark:text-stone-400">
+                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Item Name</th>
+                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Stock Level</th>
+                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Supplier</th>
+                                <th className="p-4 uppercase tracking-wider font-mono text-[10px] text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-neutral-100 dark:divide-stone-800/80">
+                              {ingredients.map((ing) => {
+                                const isLow = ing.quantity <= ing.minStock;
+                                const isOut = ing.quantity <= 0;
+                                return (
+                                  <tr key={ing.id} className="hover:bg-neutral-50/50 dark:hover:bg-stone-800/30 text-neutral-800 dark:text-stone-300">
+                                    <td className="p-4 font-bold">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`w-2 h-2 rounded-full ${isOut ? "bg-red-500" : isLow ? "bg-amber-400" : "bg-emerald-500 animate-pulse"}`} />
+                                        <span>{ing.name}</span>
+                                      </div>
+                                      <span className="text-[10px] text-neutral-400 dark:text-stone-500 font-mono block mt-0.5">Threshold: {ing.minStock} {ing.unit}</span>
+                                    </td>
+                                    <td className="p-4">
+                                      <span className={`font-mono font-bold px-2.5 py-1 rounded-lg text-[11px] ${isOut ? "bg-red-50 dark:bg-rose-950/20 text-red-650" : isLow ? "bg-amber-50 dark:bg-amber-950/25 text-amber-600" : "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600"}`}>
+                                        {ing.quantity} {ing.unit}
+                                      </span>
+                                    </td>
+                                    <td className="p-4 text-neutral-450 dark:text-stone-455 font-sans pr-2">{ing.supplier}</td>
+                                    <td className="p-4 text-right space-x-1 flex items-center justify-end">
+                                      <button
+                                        onClick={() => {
+                                          checkPermissionAndAction(() => {
+                                            const addStr = prompt(`Replenish ${ing.name} - Enter count to add:`);
+                                            if (!addStr) return;
+                                            const addVal = parseInt(addStr);
+                                            if (isNaN(addVal)) return;
+                                            
+                                            setIngredients(prev => prev.map(i => {
+                                              if (i.id === ing.id) {
+                                                const newQty = i.quantity + addVal;
+                                                return {
+                                                  ...i,
+                                                  quantity: newQty,
+                                                  status: (newQty <= 0 ? "Out of Stock" : newQty <= i.minStock ? "Low Stock" : "Good") as any
+                                                };
+                                              }
+                                              return i;
+                                            }));
+                                            showToast(`Stock updated for ${ing.name}! 📦`);
+                                          });
+                                        }}
+                                        className="px-2.5 py-1.5 bg-neutral-100 dark:bg-stone-800 hover:bg-neutral-200 dark:hover:bg-stone-700 text-neutral-700 dark:text-stone-300 rounded-lg font-bold text-[10px] cursor-pointer"
+                                      >
+                                        Restock
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          checkPermissionAndAction(() => {
+                                            setIngredients(prev => prev.filter(i => i.id !== ing.id));
+                                            showToast("Ingredient deleted! 🗑️");
+                                          });
+                                        }}
+                                        className="p-1.5 text-neutral-400 hover:text-[#E11D48] cursor-pointer"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="bg-white dark:bg-stone-900 rounded-3xl border border-neutral-200 dark:border-stone-800 shadow-sm p-6 space-y-4">
+                        <h4 className="font-display font-black text-neutral-900 dark:text-white text-sm">Inventory Alert Thresholds</h4>
+                        <p className="text-xs text-neutral-450 dark:text-stone-500">Our kitchen monitors automatic low stock triggers based on typical meal orders.</p>
+                        
+                        <div className="space-y-3.5 text-xs text-neutral-700 dark:text-stone-300">
+                          {ingredients.filter(i => i.quantity <= i.minStock).length === 0 ? (
+                            <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/10 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/20 rounded-2xl flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-emerald-500 animate-pulse" />
+                              <span className="font-bold font-sans">Perfect Stock Status! All levels green.</span>
+                            </div>
+                          ) : (
+                            ingredients.filter(i => i.quantity <= i.minStock).map(i => (
+                              <div key={i.id} className="p-3.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex items-center justify-between" id={`alert-stock-${i.id}`}>
+                                <span className="font-bold text-amber-950 dark:text-amber-400">{i.name}</span>
+                                <span className="text-[10px] bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-305 px-2.5 py-1 rounded-lg font-bold font-mono">
+                                  {i.quantity} left
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ======================= TABS CONTENT: IMAGES ======================= */}
+                {adminActiveSection === "images" && (
+                  <div className="space-y-6 animate-fade-in" id="sec-images">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
+                      <div className="space-y-1">
+                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Media Library</h3>
+                        <p className="text-xs text-neutral-400 dark:text-stone-450">Manage vector, banner, and item thumbnail imagery storage.</p>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          checkPermissionAndAction(() => {
+                            const title = prompt("Enter media item title:");
+                            if (!title) return;
+                            const url = prompt("Enter Image URL:") || "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80";
+                            const cat = prompt("Category tag (e.g. burgers, drinks, banners):") || "burgers";
+                            
+                            const nextId = mediaImages.length > 0 ? Math.max(...mediaImages.map(m => m.id)) + 1 : 1;
+                            const newImg = {
+                              id: nextId,
+                              title,
+                              url,
+                              size: "450 KB",
+                              type: "image/jpeg",
+                              category: cat
+                            };
+                            setMediaImages(prev => [newImg, ...prev]);
+                            showToast(`Image ${title} registered to gallery! 📸`);
+                          });
+                        }}
+                        className="px-4 py-2 bg-neutral-900 dark:bg-stone-800 hover:bg-neutral-855 dark:hover:bg-stone-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Upload Mock Graphic</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {mediaImages.map((img) => (
+                        <div key={img.id} className="group bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all relative flex flex-col justify-between" id={`image-card-${img.id}`}>
+                          <div className="aspect-square bg-slate-100 dark:bg-stone-800 relative overflow-hidden">
+                            <img
+                              src={img.url}
+                              alt={img.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="absolute bottom-2 left-2 bg-black/70 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">
+                              {img.category}
+                            </span>
+                          </div>
+                          
+                          <div className="p-3.5 space-y-1.5">
+                            <h4 className="text-xs font-bold text-neutral-800 dark:text-stone-300 truncate font-display">{img.title}</h4>
+                            <div className="flex items-center justify-between font-mono text-[9px] text-neutral-400 dark:text-stone-500">
+                              <span>{img.size}</span>
+                              <span>JPG</span>
+                            </div>
+                          </div>
+
+                          <div className="p-2 border-t border-neutral-100 dark:border-stone-800/80 bg-neutral-50 dark:bg-stone-850/30 flex items-center justify-around gap-1 font-sans">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(img.url);
+                                showToast("Copied dynamic asset path! 📋");
+                              }}
+                              className="px-2 py-1.5 text-[10px] font-bold bg-white dark:bg-stone-800 hover:bg-neutral-100 rounded-lg text-neutral-600 dark:text-stone-400 transition-colors flex-1 text-center cursor-pointer"
+                            >
+                              Copy path
+                            </button>
+                            <button
+                              onClick={() => {
+                                checkPermissionAndAction(() => {
+                                  setMediaImages(prev => prev.filter(m => m.id !== img.id));
+                                  showToast("Asset detached from server! 🗑️");
+                                });
+                              }}
+                              className="p-1 px-1.5 bg-red-50 text-red-650 hover:bg-red-100 hover:text-red-700 rounded-lg cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ======================= TABS CONTENT: OFFERS ======================= */}
+                {adminActiveSection === "offers" && (
+                  <div className="space-y-6 animate-fade-in" id="sec-offers">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
+                      <div className="space-y-1">
+                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Interactive Discount Offers</h3>
+                        <p className="text-xs text-neutral-400 dark:text-stone-450">Configure public code coupons, seasonal reductions, and discounts.</p>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          checkPermissionAndAction(() => {
+                            const title = prompt("Enter Offer Campaign Name:");
+                            if (!title) return;
+                            const prCode = prompt("Enter Promo Coupon Code (e.g. WOWFAST10):") || "WOWFAST50";
+                            const disPercent = parseInt(prompt("Enter Discount Percent (e.g. 15):") || "15");
+                            const subtitle = prompt("Enter subtitles text:") || "Valid on classic burger deals";
+                            const valid = prompt("Valid timeframe:") || "Till end of month";
+
+                            const nextId = offers.length > 0 ? Math.max(...offers.map(o => o.id)) + 1 : 1;
+                            const newOff = {
+                              id: nextId,
+                              title,
+                              subtitle,
+                              promoCode: prCode,
+                              discountPercent: disPercent,
+                              validity: valid,
+                              isActive: true
+                            };
+                            setOffers(prev => [...prev, newOff]);
+                            showToast(`Discount Campaign ${title} is green! 🏷️`);
+                          });
+                        }}
+                        className="px-4 py-2 bg-[#E11D48] hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Create Offer Coupon</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {offers.map((off) => (
+                        <div key={off.id} className="bg-white dark:bg-stone-900 border border-neutral-205 dark:border-stone-805 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between" id={`offer-card-${off.id}`}>
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-amber-500/20 to-red-500/20 rounded-full blur-2xl pointer-events-none" />
+                          
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <span className="bg-[#E53935] text-white font-mono text-[11px] font-black px-2.5 py-1 rounded-xl">
+                                {off.discountPercent}% OFF
+                              </span>
+                              
+                              <label className="flex items-center gap-2 cursor-pointer font-sans">
+                                <input
+                                  type="checkbox"
+                                  checked={off.isActive}
+                                  onChange={(e) => {
+                                    setOffers(prev => prev.map(o => o.id === off.id ? { ...o, isActive: e.target.checked } : o));
+                                    showToast(`${off.title} Campaign status updated! 🔄`);
+                                  }}
+                                  className="w-4 h-4 rounded text-emerald-500 font-bold focus:ring-[#FFC107] cursor-pointer"
+                                />
+                                <span className={`text-[10px] font-bold ${off.isActive ? "text-emerald-600 font-black" : "text-neutral-400 font-mono"}`}>
+                                  {off.isActive ? "LIVE" : "DRAFT"}
+                                </span>
+                              </label>
+                            </div>
+
+                            <div className="space-y-1">
+                              <h4 className="font-display font-black text-neutral-955 dark:text-white text-base leading-snug">{off.title}</h4>
+                              <p className="text-xs text-neutral-500 dark:text-stone-400">{off.subtitle}</p>
+                            </div>
+                          </div>
+
+                          <div className="pt-5 mt-5 border-t border-dashed border-neutral-200 dark:border-stone-800 bg-transparent">
+                            <div className="bg-amber-100/30 dark:bg-amber-950/20 p-2.5 rounded-xl border border-dashed border-amber-300 dark:border-amber-800/60 flex items-center justify-between font-mono">
+                              <span className="text-[10.5px] text-amber-900 dark:text-amber-400">Coupon:</span>
+                              <span className="font-black text-xs text-[#E53935] tracking-widest">{off.promoCode}</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-3 text-[10px] text-neutral-400 dark:text-stone-500 font-sans">
+                              <span>Validity: {off.validity}</span>
+                              <button
+                                onClick={() => {
+                                  checkPermissionAndAction(() => {
+                                    setOffers(prev => prev.filter(o => o.id !== off.id));
+                                    showToast("Offer detoured! 🗑️");
+                                  });
+                                }}
+                                className="text-neutral-400 hover:text-red-651 cursor-pointer text-[10.5px] font-bold"
+                              >
+                                Delete campaign
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ======================= TABS CONTENT: BANNERS ======================= */}
+                {adminActiveSection === "banners" && (
+                  <div className="space-y-6 animate-fade-in" id="sec-banners">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
+                      <div className="space-y-1">
+                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Interactive Home Page Banners</h3>
+                        <p className="text-xs text-neutral-400 dark:text-stone-450">Upload and configure promotional cards displayed prominently at customer entry.</p>
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          checkPermissionAndAction(() => {
+                            const title = prompt("Banner Title:");
+                            if (!title) return;
+                            const kicker = prompt("Banner kicker/tagline:") || "LIMITED EDITION CAMPAIGN";
+                            const cta = prompt("CTA action button text:") || "Order Gourmet Now";
+                            const imgUrl = prompt("Banner Background Image URL:") || "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80";
+
+                            const nextId = banners.length > 0 ? Math.max(...banners.map(b => b.id)) + 1 : 1;
+                            const newBanner = {
+                              id: nextId,
+                              title,
+                              kicker,
+                              imageUrl: imgUrl,
+                              ctaText: cta,
+                              isLive: true
+                            };
+                            setBanners(prev => [...prev, newBanner]);
+                            showToast(`Banner campaign ${title} appended! 📱`);
+                          });
+                        }}
+                        className="px-4 py-2 bg-neutral-950 dark:bg-stone-800 hover:bg-neutral-850 dark:hover:bg-stone-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Live Banner</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {banners.map((ban) => (
+                        <div key={ban.id} className="bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between" id={`banner-card-${ban.id}`}>
+                          <div className="h-40 relative bg-slate-900">
+                            <img
+                              src={ban.imageUrl}
+                              alt={ban.title}
+                              className="w-full h-full object-cover opacity-85"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-6 flex flex-col justify-end space-y-1">
+                              <span className="text-[9px] uppercase tracking-wider font-mono font-black text-[#FFC107]">{ban.kicker}</span>
+                              <h4 className="font-display font-black text-white text-lg tracking-tight leading-tight">{ban.title}</h4>
+                            </div>
+                          </div>
+
+                          <div className="p-5 flex items-center justify-between border-t border-neutral-100 dark:border-stone-800/80 bg-neutral-50/50 dark:bg-stone-850/20 text-xs">
+                            <span className="font-mono text-[10.5px] text-neutral-400 dark:text-stone-500 font-sans">CTA: <strong className="text-neutral-700 dark:text-stone-300 font-sans">{ban.ctaText}</strong></span>
+                            
+                            <div className="flex items-center gap-4 font-sans">
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={ban.isLive}
+                                  onChange={(e) => {
+                                    setBanners(prev => prev.map(b => b.id === ban.id ? { ...b, isLive: e.target.checked } : b));
+                                    showToast(`${ban.title} live status changed! 🔄`);
+                                  }}
+                                  className="w-4.5 h-4.5 rounded text-[#E53935] focus:ring-[#E53935]"
+                                />
+                                <span className="font-black text-[10px] text-neutral-500 dark:text-stone-400">{ban.isLive ? "LIVE ON APP" : "DRAFT"}</span>
+                              </label>
+
+                              <button
+                                onClick={() => {
+                                  checkPermissionAndAction(() => {
+                                    setBanners(prev => prev.filter(b => b.id !== ban.id));
+                                    showToast("Banner Campaign deleted! 🗑️");
+                                  });
+                                }}
+                                className="text-neutral-400 hover:text-red-650 transition-colors p-1 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ======================= TABS CONTENT: LOGIN LOGS ======================= */}
+                {adminActiveSection === "logs" && (
+                  <div className="bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl p-6 shadow-sm space-y-6 animate-fade-in" id="sec-logs">
+                    <div className="space-y-1.5 font-sans">
+                      <h4 className="font-display font-black text-neutral-900 dark:text-white text-base">Administrative Access Logs</h4>
+                      <p className="text-xs text-neutral-400 dark:text-stone-450 leading-normal">
+                        Audit security, sessions, credentials triggers, and local testing logs with relative sandbox markers.
+                      </p>
+                    </div>
+
+                    <div className="border border-neutral-200 dark:border-stone-800 rounded-2xl overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-neutral-50 dark:bg-stone-800/40 border-b border-neutral-200 dark:border-stone-750 font-bold text-neutral-500 dark:text-stone-400">
+                              <th className="p-3.5 font-mono text-[10px]">Attempt ID</th>
+                              <th className="p-3.5 text-[10px]">Administrator</th>
+                              <th className="p-3.5 text-[10px]">Timestamp</th>
+                              <th className="p-3.5 text-[10px]">IP Address</th>
+                              <th className="p-3.5 text-right text-[10px]">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-100 dark:divide-stone-800/80 font-mono text-[11px] text-neutral-700 dark:text-stone-300">
+                            {loginLogs.map((log) => (
+                              <tr key={log.id} className="hover:bg-neutral-50/40 dark:hover:bg-stone-850/20" id={`log-row-${log.id}`}>
+                                <td className="p-3.5 font-semibold text-neutral-400">#WOW-SEC-{log.id * 102}</td>
+                                <td className="p-3.5 font-bold font-sans text-neutral-800 dark:text-white">{log.username}</td>
+                                <td className="p-3.5 text-neutral-500 dark:text-stone-400">{log.timestamp}</td>
+                                <td className="p-3.5 text-neutral-400">{log.ip}</td>
+                                <td className="p-3.5 text-right font-sans">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600">
+                                    {log.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </main>
               
             </motion.div>

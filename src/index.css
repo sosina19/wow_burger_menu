@@ -20,6 +20,174 @@
 body {
   font-family: var(--font-sans);
   background-color: #faf9f6; /* crisp off-white/cream */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Premium Dark Theme Overrides */
+html.dark body {
+  background-color: #0c0a09 !important; /* premium warm dark obsidian */
+  color: #fafaf9 !important;
+}
+
+.dark #wow-app-container {
+  background-color: #0c0a09 !important;
+  color: #fafaf9 !important;
+}
+
+/* Light background elements transformed to premium charcoal cards */
+.dark .bg-white,
+.dark #customer-view-root div.bg-white,
+.dark #admin-view-root div.bg-white,
+.dark #detailed-item-overlay .bg-white {
+  background-color: #1c1917 !important; /* stone-900 border */
+  color: #fafaf9 !important;
+  border-color: #2e2a24 !important;
+}
+
+/* Neutral text colors translated to light colors on dark canvas */
+.dark .text-neutral-950,
+.dark .text-neutral-900,
+.dark .text-neutral-800 {
+  color: #fafaf9 !important;
+}
+
+.dark .text-neutral-700,
+.dark .text-neutral-600 {
+  color: #d6d3d1 !important; /* stone-300 warmth */
+}
+
+.dark .text-neutral-500,
+.dark .text-neutral-400 {
+  color: #a8a29e !important; /* stone-400 utility text */
+}
+
+.dark .border-neutral-200,
+.dark .border-neutral-100,
+.dark .border-neutral-205,
+.dark .border-neutral-205\/80,
+.dark .border-neutral-205\/90 {
+  border-color: #2e2a24 !important;
+}
+
+/* Background panel replacements */
+.dark .bg-slate-50,
+.dark .bg-neutral-50 {
+  background-color: #141414 !important;
+  color: #fafaf9 !important;
+}
+
+.dark .bg-neutral-50\/50 {
+  background-color: #1c1917 !important;
+  border-color: #2e2a24 !important;
+}
+
+/* Input elements styling */
+.dark input[type="text"],
+.dark input[type="number"],
+.dark input[type="url"],
+.dark select,
+.dark textarea {
+  background-color: #1c1917 !important;
+  color: #fafaf9 !important;
+  border-color: #44403c !important;
+}
+
+.dark input[type="text"]::placeholder,
+.dark textarea::placeholder {
+  color: #78716c !important;
+}
+
+/* Category menu components */
+.dark #category-scroller-track button {
+  background-color: #1c1917 !important;
+  border-color: #2e2a24 !important;
+  color: #d6d3d1 !important;
+}
+
+.dark #category-scroller-track button:hover {
+  background-color: #292524 !important;
+}
+
+.dark #category-scroller-track button.bg-[#121212],
+.dark #category-scroller-track button.bg-[#E53935] {
+  background-color: #E53935 !important;
+  color: #ffffff !important;
+  border-color: #E53935 !important;
+}
+
+/* Bottom mobile navigation */
+.dark #bottom-bar-nav {
+  background-color: rgba(12, 10, 9, 0.96) !important;
+  border-color: #292524 !important;
+}
+
+.dark #bottom-bar-nav .bg-red-50 {
+  background-color: rgba(229, 57, 53, 0.15) !important;
+  color: #f87171 !important;
+}
+
+/* Badges and notification bubbles in menus */
+.dark .bg-red-50 {
+  background-color: rgba(229, 57, 53, 0.1) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(229, 57, 53, 0.2) !important;
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.dark .bg-amber-50,
+.dark .bg-amber-50\/40 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  color: #fde68a !important;
+  border-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+/* Overlay back button strip on detail popup modal */
+.dark .absolute.bottom-0.inset-x-0.bg-gradient-to-t {
+  background-image: linear-gradient(to top, #0c0a09 70%, rgba(12, 10, 9, 0.8) 100%) !important;
+  border-color: #1a1a1a !important;
+}
+
+.dark .absolute.bottom-0.inset-x-0.bg-gradient-to-t button {
+  background-color: #E53935 !important;
+  color: #ffffff !important;
+}
+
+/* Settings and general admin panels overrides */
+.dark .text-neutral-500 {
+  color: #a8a29e !important;
+}
+
+.dark .hover\:bg-neutral-50:hover {
+  background-color: #27272a !important;
+}
+
+.dark .hover\:bg-neutral-100:hover {
+  background-color: #292524 !important;
+}
+
+/* Filter Options toggle background button */
+.dark #btn-toggle-filters {
+  background-color: #1c1917 !important;
+  color: #fafaf9 !important;
+  border-color: #2e2a24 !important;
+}
+
+/* Custom detailed modal scroller */
+.dark #modal-scroller-node {
+  background-color: #0c0a09 !important;
+  color: #fafaf9 !important;
+}
+
+/* Fix shadow contrasts */
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg {
+  box-shadow: 0 4px 20px -2px rgba(0,0,0,0.5) !important;
 }
 
 /* Food glow effect */
