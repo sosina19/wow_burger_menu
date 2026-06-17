@@ -1,0 +1,6 @@
+{
+  "name": "Wow Burger Menu",
+  "description": "A simple, modern, and appetizing mobile-first digital menu website for Wow Burger.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
