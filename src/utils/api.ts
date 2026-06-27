@@ -154,6 +154,52 @@ export const api = {
     return { success: true, message: "Password updated successfully in browser storage." };
   },
 
+  updateProfile: async (profileData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    username: string;
+    avatar?: string;
+  }) => {
+    const loggedInUser = getLoggedInUser();
+    if (!loggedInUser) throw new Error("Unauthorized");
+    const db = getLocalDB();
+    const userIndex = db.users.findIndex(u => u.id === loggedInUser.id);
+    if (userIndex === -1) throw new Error("User not found");
+    const user = db.users[userIndex];
+
+    if (profileData.username !== user.username) {
+      const taken = db.users.some(u => u.username === profileData.username && u.id !== user.id);
+      if (taken) throw new Error("Username already taken by another account");
+    }
+
+    user.firstName = profileData.firstName;
+    user.lastName = profileData.lastName;
+    user.email = profileData.email;
+    user.phone = profileData.phone;
+    user.username = profileData.username;
+    if (profileData.avatar !== undefined) {
+      user.avatar = profileData.avatar;
+    }
+
+    db.users[userIndex] = user;
+    saveLocalDB(db);
+    setLoggedInUser(user);
+
+    db.activityLogs.unshift({
+      id: `log-${Date.now()}`,
+      username: user.username,
+      timestamp: new Date().toISOString(),
+      ip: "127.0.0.1",
+      action: "Profile Update",
+      status: "Success"
+    });
+    saveLocalDB(db);
+
+    return { success: true, message: "Profile updated successfully.", user };
+  },
+
   // --- Menu Items ---
   getMenu: async (params: {
     page?: number;

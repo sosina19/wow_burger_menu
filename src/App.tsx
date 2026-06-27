@@ -219,6 +219,18 @@ export default function App() {
   // Notifications
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  const [heroTitle, setHeroTitle] = useState<string>(() => {
+    return localStorage.getItem("wow_burger_hero_title") || "Addis Ababa's Ultimate Fire-Grilled Gourmet Burgers.";
+  });
+
+  const [heroSubtitle, setHeroSubtitle] = useState<string>(() => {
+    return localStorage.getItem("wow_burger_hero_subtitle") || "Flame-grilled grass-fed premium beef patties, aged Colby Jack cheese, and signature slow-simmered house WOW sauce on toasted buttery brioche.";
+  });
+
+  const [qrBaseUrlOverride, setQrBaseUrlOverride] = useState<string>(() => {
+    return localStorage.getItem("wow_burger_qr_base_url_override") || "";
+  });
+
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -1311,10 +1323,10 @@ export default function App() {
                 🔥 Hot & Sizzling Now
               </span>
               <h2 className="text-3xl md:text-5xl font-black font-display tracking-tight leading-tight">
-                Addis Ababa's Legendary Gourmet Burgers.
+                {heroTitle}
               </h2>
               <p className="text-sm md:text-base text-gray-200 max-w-md font-sans leading-relaxed">
-                Flame-grilled grass-fed premium beef patties, aged Colby Jack cheese, and signature slow-simmered house WOW sauce on toasted buttery brioche.
+                {heroSubtitle}
               </p>
               <button
                 onClick={() => {
@@ -1755,7 +1767,7 @@ export default function App() {
                           : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
                       }`}
                     >
-                      <Settings className="w-4 h-4" /> Access & Security
+                      <Settings className="w-4 h-4" /> Profile & Security
                     </button>
                   </nav>
                 </div>
@@ -2207,7 +2219,12 @@ export default function App() {
 
                 {/* ACCESS & SECURITY (PASSWORD CHANGE) TAB */}
                 {adminTab === "security" && (
-                  <PasswordChange onSuccessLogout={handleLogout} onNotify={showToast} />
+                  <PasswordChange
+                    onSuccessLogout={handleLogout}
+                    onNotify={showToast}
+                    currentUser={currentUser}
+                    onProfileUpdate={(updatedUser) => setCurrentUser(updatedUser)}
+                  />
                 )}
 
                 {/* LIVE ORDER MONITOR TAB */}
@@ -2527,6 +2544,48 @@ export default function App() {
                             />
                           </div>
 
+                          <div>
+                            <label className="block text-[10px] font-bold font-mono uppercase tracking-widest text-gray-400 mb-1.5">Base URL Override</label>
+                            <input
+                              type="text"
+                              placeholder={`e.g., ${window.location.origin}`}
+                              value={qrBaseUrlOverride}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setQrBaseUrlOverride(val);
+                                localStorage.setItem("wow_burger_qr_base_url_override", val);
+                              }}
+                              className="w-full px-3 py-2.5 bg-gray-50 focus:bg-white border border-gray-200 dark:border-stone-800 focus:border-red-500 rounded-xl outline-hidden focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white font-mono"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 leading-normal">
+                              Defaults to <code className="bg-gray-100 dark:bg-stone-800 px-1 py-0.5 rounded">{window.location.origin}</code>
+                            </p>
+                          </div>
+
+                          {/* Advisory for scanning on physical phone */}
+                          {(window.location.origin.includes("localhost") || window.location.origin.includes("127.0.0.1") || window.location.origin.includes("-dev-") || !qrBaseUrlOverride) && (
+                            <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl space-y-1.5">
+                              <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                                ⚠️ Phone Scanning Advisory
+                              </span>
+                              <p className="text-[11px] text-amber-850 dark:text-amber-300 font-sans leading-relaxed">
+                                {window.location.origin.includes("localhost") || window.location.origin.includes("127.0.0.1") ? (
+                                  <span>
+                                    You are running on <strong>localhost</strong>. QR codes pointing to localhost cannot be reached by a standard physical phone's camera.
+                                  </span>
+                                ) : (
+                                  <span>
+                                    You are inside the <strong>Secured Developer Editor</strong>. The current address contains a secured dev URL, which prompts for a login when scanned on a phone.
+                                  </span>
+                                )}
+                                <span className="mt-1.5 block font-bold text-red-600 dark:text-red-400">
+                                  To test on your mobile:
+                                </span>
+                                Copy and paste your public <strong>Shared App URL</strong> into the "Base URL Override" field above (e.g., <code>https://ais-pre-...run.app</code>).
+                              </p>
+                            </div>
+                          )}
+
                           <div className="p-3.5 bg-gray-50 dark:bg-stone-850/40 rounded-xl border border-gray-100 dark:border-stone-800 space-y-1">
                             <span className="text-[9px] font-black uppercase text-amber-600 block">How it works</span>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 font-sans leading-relaxed">
@@ -2538,7 +2597,7 @@ export default function App() {
                             onClick={() => {
                               const input = document.getElementById("qr-table-input") as HTMLInputElement;
                               const tNum = input?.value || "1";
-                              const origin = window.location.origin;
+                              const origin = qrBaseUrlOverride.trim() || window.location.origin;
                               const tableUrl = `${origin}/?table=${tNum}`;
                               const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(tableUrl)}`;
                               
@@ -2596,7 +2655,8 @@ export default function App() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {Array.from({ length: 8 }, (_, i) => i + 1).map(num => {
-                            const tableUrl = `${window.location.origin}/?table=${num}`;
+                            const origin = qrBaseUrlOverride.trim() || window.location.origin;
+                            const tableUrl = `${origin}/?table=${num}`;
                             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(tableUrl)}`;
                             return (
                               <div
