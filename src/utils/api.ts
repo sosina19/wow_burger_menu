@@ -36,6 +36,31 @@ function getLocalDB(): DBStructure {
   try {
     const parsed = JSON.parse(existing);
     if (!parsed.orders) parsed.orders = [];
+    
+    // Auto-patch any old/broken onion ring images stored in existing local storage
+    let patched = false;
+    if (parsed.menuItems) {
+      parsed.menuItems = parsed.menuItems.map((item: any) => {
+        if (item.id === "onion-rings" && (item.image?.includes("photo-1639024471283") || !item.image)) {
+          item.image = "https://images.unsplash.com/photo-1625938146369-adc83368bda7?auto=format&fit=crop&w=600&q=80";
+          patched = true;
+        }
+        return item;
+      });
+    }
+    if (parsed.itemImages) {
+      parsed.itemImages = parsed.itemImages.map((img: any) => {
+        if (img.itemId === "onion-rings" && img.imagePath?.includes("photo-1639024471283")) {
+          img.imagePath = "https://images.unsplash.com/photo-1625938146369-adc83368bda7?auto=format&fit=crop&w=600&q=80";
+          patched = true;
+        }
+        return img;
+      });
+    }
+    if (patched) {
+      localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(parsed));
+    }
+
     return parsed;
   } catch {
     const fallback = { ...(initialDb as any), orders: [] };
