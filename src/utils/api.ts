@@ -1,5 +1,5 @@
 import { User, MenuItem, ItemImage, Offer, Banner, Ingredient, ActivityLog, AnalyticsData, Review } from "../types";
-import initialDb from "../../db.json";
+import initialDb from "./db.json";
 
 const LOCAL_STORAGE_DB_KEY = "wow_burger_db";
 
