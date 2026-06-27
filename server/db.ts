@@ -92,6 +92,27 @@ export interface ReviewDB {
   date: string;
 }
 
+export interface OrderItemDB {
+  id: string;
+  orderId: string;
+  menuItemId: string;
+  quantity: number;
+  price: number;
+  itemName?: string;
+}
+
+export interface OrderDB {
+  id: string;
+  customerName: string;
+  phone: string;
+  tableNumber: string;
+  totalPrice: number;
+  status: "Pending" | "Accepted" | "Preparing" | "Ready" | "Completed" | "Cancelled";
+  notes?: string;
+  createdAt: string;
+  items: OrderItemDB[];
+}
+
 interface DBStructure {
   users: UserDB[];
   menuItems: MenuItemDB[];
@@ -101,6 +122,7 @@ interface DBStructure {
   ingredients: IngredientStockDB[];
   activityLogs: ActivityLogDB[];
   reviews: ReviewDB[];
+  orders: OrderDB[];
 }
 
 // Initial default data seed helper
@@ -629,7 +651,8 @@ function getInitialDB(): DBStructure {
         comment: "Crispy on the outside, fluffy inside, and seasoned to perfection with smoked paprika and sea salt. Best fries in town!",
         date: "2026-06-16"
       }
-    ]
+    ],
+    orders: []
   };
 }
 
@@ -1043,5 +1066,61 @@ export class Database {
 
     this.save();
     return newReview;
+  }
+
+  // --- Orders API ---
+  static getOrders(): OrderDB[] {
+    this.load();
+    if (!this.data!.orders) {
+      this.data!.orders = [];
+    }
+    return this.data!.orders;
+  }
+
+  static createOrder(order: Omit<OrderDB, "id" | "createdAt" | "status" | "items"> & { items: Omit<OrderItemDB, "id" | "orderId">[] }): OrderDB {
+    this.load();
+    if (!this.data!.orders) {
+      this.data!.orders = [];
+    }
+    const orderId = `ord-${Date.now()}`;
+    const formattedItems: OrderItemDB[] = order.items.map((item, idx) => {
+      const menuItem = this.data!.menuItems.find(m => m.id === item.menuItemId);
+      return {
+        id: `orditm-${orderId}-${idx}`,
+        orderId,
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        price: item.price,
+        itemName: menuItem ? menuItem.name : "Unknown Item"
+      };
+    });
+
+    const newOrder: OrderDB = {
+      id: orderId,
+      customerName: order.customerName,
+      phone: order.phone,
+      tableNumber: order.tableNumber || "Takeaway",
+      totalPrice: order.totalPrice,
+      status: "Pending",
+      notes: order.notes || "",
+      createdAt: new Date().toISOString(),
+      items: formattedItems
+    };
+
+    this.data!.orders.unshift(newOrder);
+    this.save();
+    return newOrder;
+  }
+
+  static updateOrderStatus(id: string, status: OrderDB["status"]): OrderDB | null {
+    this.load();
+    if (!this.data!.orders) {
+      this.data!.orders = [];
+    }
+    const idx = this.data!.orders.findIndex(o => o.id === id);
+    if (idx === -1) return null;
+    this.data!.orders[idx].status = status;
+    this.save();
+    return this.data!.orders[idx];
   }
 }

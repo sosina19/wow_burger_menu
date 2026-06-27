@@ -113,3 +113,26 @@ export interface AnalyticsData {
     recentActivity: ActivityLog[];
   };
 }
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  menuItemId: string;
+  quantity: number;
+  price: number;
+  itemName?: string;
+}
+
+export type OrderStatus = "Pending" | "Accepted" | "Preparing" | "Ready" | "Completed" | "Cancelled";
+
+export interface Order {
+  id: string;
+  customerName: string;
+  phone: string;
+  tableNumber: string;
+  totalPrice: number;
+  status: OrderStatus;
+  notes?: string;
+  createdAt: string;
+  items: OrderItem[];
+}

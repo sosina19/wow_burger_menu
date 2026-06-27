@@ -1,4 +1,4 @@
-import { User, MenuItem, ItemImage, Offer, Banner, Ingredient, ActivityLog, AnalyticsData, Review } from "../types";
+import { User, MenuItem, ItemImage, Offer, Banner, Ingredient, ActivityLog, AnalyticsData, Review, Order, OrderItem } from "../types";
 import initialDb from "./db.json";
 
 const LOCAL_STORAGE_DB_KEY = "wow_burger_db";
@@ -12,6 +12,7 @@ interface DBStructure {
   ingredients: Ingredient[];
   activityLogs: ActivityLog[];
   reviews: Review[];
+  orders: Order[];
 }
 
 // Helpers to read/write state to browser local storage
@@ -27,14 +28,18 @@ function getLocalDB(): DBStructure {
       ingredients: (initialDb as any).ingredients || [],
       activityLogs: (initialDb as any).activityLogs || [],
       reviews: (initialDb as any).reviews || [],
+      orders: [],
     };
     localStorage.setItem(LOCAL_STORAGE_DB_KEY, JSON.stringify(seededDb));
     return seededDb;
   }
   try {
-    return JSON.parse(existing);
+    const parsed = JSON.parse(existing);
+    if (!parsed.orders) parsed.orders = [];
+    return parsed;
   } catch {
-    return initialDb as any;
+    const fallback = { ...(initialDb as any), orders: [] };
+    return fallback;
   }
 }
 
@@ -680,5 +685,121 @@ export const api = {
 
     saveLocalDB(db);
     return newReview;
+  },
+
+  // --- Orders API ---
+  getOrders: async (): Promise<Order[]> => {
+    try {
+      const response = await fetch("/api/orders", {
+        headers: {
+          "Authorization": `Bearer ${getAuthToken()}`
+        }
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      console.warn("Backend getOrders failed, using local storage", e);
+    }
+    const db = getLocalDB();
+    return db.orders || [];
+  },
+
+  createOrder: async (orderData: {
+    customerName: string;
+    phone: string;
+    tableNumber: string;
+    items: { menuItemId: string; quantity: number; price: number }[];
+    totalPrice: number;
+    notes?: string;
+  }): Promise<Order> => {
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(orderData)
+      });
+      if (response.ok) {
+        const serverOrder = await response.json();
+        // Keep in sync locally
+        const db = getLocalDB();
+        db.orders = db.orders || [];
+        db.orders.unshift(serverOrder);
+        saveLocalDB(db);
+        return serverOrder;
+      }
+    } catch (e) {
+      console.warn("Backend createOrder failed, placing order locally in localStorage", e);
+    }
+
+    // Fallback local storage implementation
+    const db = getLocalDB();
+    const orderId = `ord-${Date.now()}`;
+    const formattedItems: OrderItem[] = orderData.items.map((item, idx) => {
+      const menuItem = db.menuItems.find(m => m.id === item.menuItemId);
+      return {
+        id: `orditm-${orderId}-${idx}`,
+        orderId,
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        price: item.price,
+        itemName: menuItem ? menuItem.name : "Unknown Item"
+      };
+    });
+
+    const newOrder: Order = {
+      id: orderId,
+      customerName: orderData.customerName,
+      phone: orderData.phone,
+      tableNumber: orderData.tableNumber || "Takeaway",
+      totalPrice: orderData.totalPrice,
+      status: "Pending",
+      notes: orderData.notes || "",
+      createdAt: new Date().toISOString(),
+      items: formattedItems
+    };
+
+    db.orders = db.orders || [];
+    db.orders.unshift(newOrder);
+    saveLocalDB(db);
+    return newOrder;
+  },
+
+  updateOrderStatus: async (id: string, status: Order["status"]): Promise<Order> => {
+    try {
+      const response = await fetch(`/api/orders/${id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getAuthToken()}`
+        },
+        body: JSON.stringify({ status })
+      });
+      if (response.ok) {
+        const serverOrder = await response.json();
+        const db = getLocalDB();
+        const idx = db.orders.findIndex(o => o.id === id);
+        if (idx !== -1) {
+          db.orders[idx] = serverOrder;
+        } else {
+          db.orders.unshift(serverOrder);
+        }
+        saveLocalDB(db);
+        return serverOrder;
+      }
+    } catch (e) {
+      console.warn("Backend updateOrderStatus failed, updating locally in localStorage", e);
+    }
+
+    const db = getLocalDB();
+    const idx = db.orders.findIndex(o => o.id === id);
+    if (idx !== -1) {
+      db.orders[idx].status = status;
+      saveLocalDB(db);
+      return db.orders[idx];
+    }
+    throw new Error("Order not found");
   }
 };

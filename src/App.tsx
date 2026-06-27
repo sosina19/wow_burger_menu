@@ -30,7 +30,14 @@ import {
   RefreshCw,
   Home,
   Utensils,
-  CupSoda
+  CupSoda,
+  ClipboardList,
+  QrCode,
+  Minus,
+  Check,
+  Printer,
+  Download,
+  Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { MenuItem, Category, Review, User, Offer, Banner, Ingredient, ActivityLog, AnalyticsData, ItemImage } from "./types";
@@ -57,8 +64,52 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(getLoggedInUser());
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
 
+  // QR Code Table Ordering States
+  const [tableNumber, setTableNumber] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tbl = params.get("table") || localStorage.getItem("wow_table_number") || "";
+    if (tbl) {
+      localStorage.setItem("wow_table_number", tbl);
+    }
+    return tbl;
+  });
+
+  interface CartItem {
+    menuItem: MenuItem;
+    quantity: number;
+  }
+
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("wow_cart");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("wow_cart", JSON.stringify(cart));
+  }, [cart]);
+
+  const [customerName, setCustomerName] = useState(() => localStorage.getItem("wow_customer_name") || "");
+  const [customerPhone, setCustomerPhone] = useState(() => localStorage.getItem("wow_customer_phone") || "");
+  const [orderNotes, setOrderNotes] = useState("");
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [lastPlacedOrder, setLastPlacedOrder] = useState<any>(null);
+
+  // Detail Modal State
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedItemImages, setSelectedItemImages] = useState<ItemImage[]>([]);
+  const [modalQty, setModalQty] = useState(1);
+  const [itemReviews, setItemReviews] = useState<Review[]>([]);
+  const [reviewAuthor, setReviewAuthor] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+
   // Customer Catalog State
-  const [activeTab, setActiveTab] = useState<"home" | "food" | "drinks" | "favorites">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "food" | "drinks" | "favorites" | "cart">("home");
   const [catalogItems, setCatalogItems] = useState<MenuItem[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogCategory, setCatalogCategory] = useState<string>("all");
@@ -73,19 +124,22 @@ export default function App() {
     }
   });
 
-  // Detail Modal State
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [selectedItemImages, setSelectedItemImages] = useState<ItemImage[]>([]);
-  const [itemReviews, setItemReviews] = useState<Review[]>([]);
-  const [reviewAuthor, setReviewAuthor] = useState("");
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewLoading, setReviewLoading] = useState(false);
-
   // Admin View state
-  const [adminTab, setAdminTab] = useState<"dashboard" | "menu" | "employees" | "offers" | "banners" | "inventory" | "logs" | "security">("dashboard");
+  const [adminTab, setAdminTab] = useState<"dashboard" | "menu" | "employees" | "offers" | "banners" | "inventory" | "logs" | "security" | "orders" | "qrcodes">("orders");
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  // Orders polling & states
+  const [orders, setOrders] = useState<any[]>([]);
+  const [lastOrdersCount, setLastOrdersCount] = useState<number>(0);
+  const [ordersSearch, setOrdersSearch] = useState("");
+  const [ordersStatusFilter, setOrdersStatusFilter] = useState("all");
+  const [ordersTableFilter, setOrdersTableFilter] = useState("all");
+  const [ordersDateFilter, setOrdersDateFilter] = useState("");
+
+  // QR Code Generation Panel State
+  const [qrCodeTableCount, setQrCodeTableCount] = useState(10);
+  const [selectedQrTable, setSelectedQrTable] = useState<string>("1");
 
   // Admin Items list pagination & queries
   const [adminItems, setAdminItems] = useState<MenuItem[]>([]);
@@ -333,9 +387,157 @@ export default function App() {
     showToast("Session closed successfully.");
   };
 
+  // --- Cart and Ordering Operations ---
+
+  const addToCart = (item: MenuItem, quantity: number = 1) => {
+    setCart((prevCart) => {
+      const existing = prevCart.find((i) => i.menuItem.id === item.id);
+      if (existing) {
+        return prevCart.map((i) =>
+          i.menuItem.id === item.id
+            ? { ...i, quantity: i.quantity + quantity }
+            : i
+        );
+      }
+      return [...prevCart, { menuItem: item, quantity }];
+    });
+  };
+
+  const updateCartQuantity = (itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    setCart((prevCart) =>
+      prevCart.map((i) =>
+        i.menuItem.id === itemId ? { ...i, quantity } : i
+      )
+    );
+  };
+
+  const removeFromCart = (itemId: string) => {
+    setCart((prevCart) => prevCart.filter((i) => i.menuItem.id !== itemId));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerName.trim() || !customerPhone.trim()) {
+      showToast("Please provide your Name and Phone Number to place your order.", "error");
+      return;
+    }
+    if (cart.length === 0) {
+      showToast("Your shopping cart is empty.", "error");
+      return;
+    }
+
+    setIsPlacingOrder(true);
+    localStorage.setItem("wow_customer_name", customerName);
+    localStorage.setItem("wow_customer_phone", customerPhone);
+
+    const totalPrice = cart.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0);
+    const orderItemsPayload = cart.map((item) => ({
+      menuItemId: item.menuItem.id,
+      quantity: item.quantity,
+      price: item.menuItem.price
+    }));
+
+    try {
+      const orderRes = await api.createOrder({
+        customerName,
+        phone: customerPhone,
+        tableNumber: tableNumber || "Takeaway",
+        items: orderItemsPayload,
+        totalPrice,
+        notes: orderNotes
+      });
+
+      setLastPlacedOrder(orderRes);
+      clearCart();
+      setOrderNotes("");
+      showToast("🎉 Order placed successfully!");
+      // Play high pitch beep chime
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      } catch {}
+    } catch (err: any) {
+      showToast(err.message || "Failed to place order. Please try again.", "error");
+    } finally {
+      setIsPlacingOrder(false);
+    }
+  };
+
+  // Poll orders and updates for Admin and Customer live status updates
+  const loadOrders = async () => {
+    try {
+      const res = await api.getOrders();
+      setOrders(res);
+      
+      // If we got more orders than before, show notification for admins!
+      if (lastOrdersCount > 0 && res.length > lastOrdersCount) {
+        const hasPending = res.some((o: any) => o.status === "Pending" && !orders.some(existing => existing.id === o.id));
+        if (hasPending) {
+          try {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+          } catch {}
+          showToast("🔔 Live Order Alert: New table order received!");
+        }
+      }
+      setLastOrdersCount(res.length);
+
+      // If customer has an active order, let's keep its status updated in real-time!
+      if (lastPlacedOrder) {
+        const currentOrder = res.find((o: any) => o.id === lastPlacedOrder.id);
+        if (currentOrder && currentOrder.status !== lastPlacedOrder.status) {
+          setLastPlacedOrder(currentOrder);
+          showToast(`📣 Order Update: Your order is now "${currentOrder.status}"!`);
+        }
+      }
+    } catch (e) {
+      console.warn("Error polling orders:", e);
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, status: "Pending" | "Accepted" | "Preparing" | "Ready" | "Completed" | "Cancelled") => {
+    try {
+      await api.updateOrderStatus(orderId, status);
+      showToast(`Order status updated to: ${status}`);
+      await loadOrders();
+    } catch (err: any) {
+      showToast(err.message || "Could not update order status.", "error");
+    }
+  };
+
+  useEffect(() => {
+    // Poll every 5 seconds for orders (admins AND active customers)
+    loadOrders();
+    const interval = setInterval(loadOrders, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser, lastPlacedOrder, lastOrdersCount]);
+
   // Trigger Details overlay (increments view count dynamically)
   const viewDetails = async (item: MenuItem) => {
     try {
+      setModalQty(1);
       setSelectedItem(item);
       const res = await api.getMenuItem(item.id);
       setSelectedItem(res);
@@ -690,9 +892,32 @@ export default function App() {
             <Flame className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold font-display tracking-tight text-neutral-900 dark:text-white leading-none">
-              WOW BURGER
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold font-display tracking-tight text-neutral-900 dark:text-white leading-none">
+                WOW BURGER
+              </h1>
+              {!isAdminPortalOpen && (
+                tableNumber ? (
+                  <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Table {tableNumber} Ordering
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const tNum = window.prompt("Welcome to WOW BURGER! Please enter your Table Number to start digital ordering:", "1");
+                      if (tNum) {
+                        setTableNumber(tNum);
+                        showToast(`Joined Table ${tNum}! Ready to order.`);
+                      }
+                    }}
+                    className="bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 dark:hover:bg-amber-950/30 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-900/30 flex items-center gap-1 shadow-xs cursor-pointer transition-all"
+                  >
+                    Select Table
+                  </button>
+                )
+              )}
+            </div>
             <span className="text-[9px] font-mono text-gray-400 uppercase tracking-widest mt-1 block">Digital Menu Suite</span>
           </div>
         </div>
@@ -749,8 +974,331 @@ export default function App() {
       {!isAdminPortalOpen ? (
         /* ==================== CUSTOMER VIEW PORTAL ==================== */
         <main className="flex-1 max-w-7xl mx-auto w-full px-4 pt-8 pb-32 md:pb-36 md:px-8 space-y-8 animate-fade-in" id="customer-view-root">
-          
-          {/* Aesthetic Hero Banner Campaign */}
+          {activeTab === "cart" ? (
+            /* ==================== CUSTOMER DEDICATED CART / CHECKOUT VIEW ==================== */
+            <div className="space-y-8 animate-fade-in font-sans">
+              <div className="border-b border-gray-100 dark:border-stone-850 pb-5">
+                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
+                  <ShoppingBag className="w-8 h-8 text-red-600" /> Your Order & Checkout
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">Review your table items, customize notes, and place your order instantly.</p>
+              </div>
+
+              {/* ACTIVE ORDER TRACKING (If user has already placed an order) */}
+              {lastPlacedOrder && (
+                <div className="bg-red-50/20 dark:bg-stone-900/40 border border-red-100 dark:border-stone-850 p-6 rounded-[2rem] space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 text-xs font-black uppercase tracking-wider px-3 py-1 rounded-lg border border-emerald-100 dark:border-emerald-900/30 inline-flex items-center gap-1.5 animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Active Order Tracking
+                      </span>
+                      <h3 className="text-lg font-black text-gray-900 dark:text-white mt-2">
+                        {lastPlacedOrder.tableNumber && lastPlacedOrder.tableNumber !== "Takeaway" ? `Table ${lastPlacedOrder.tableNumber}` : "Takeaway Order"} • #{lastPlacedOrder.id.slice(-8)}
+                      </h3>
+                      <p className="text-xs text-gray-400 font-mono mt-1">Placed at {new Date(lastPlacedOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          showToast("🛎️ Waitstaff summoned! A server will be at your table shortly.");
+                          try {
+                            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.frequency.setValueAtTime(659.25, ctx.currentTime);
+                            gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                            osc.start();
+                            osc.stop(ctx.currentTime + 0.15);
+                          } catch {}
+                        }}
+                        className="bg-amber-500 hover:bg-amber-600 active:scale-95 text-neutral-950 font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+                      >
+                        🛎️ Summon Server
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLastPlacedOrder(null)}
+                        className="bg-gray-100 hover:bg-gray-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-gray-700 dark:text-gray-300 font-bold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                      >
+                        Dismiss Tracker
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Aesthetic Stepper Bar */}
+                  <div className="grid grid-cols-5 gap-2 text-center text-[10px] font-mono font-bold text-gray-400 py-4 relative">
+                    {/* Stepper progress background line */}
+                    <div className="absolute top-[26px] left-[10%] right-[10%] h-1 bg-gray-200 dark:bg-stone-800 -z-10 rounded-full"></div>
+                    <div
+                      className="absolute top-[26px] left-[10%] h-1 bg-red-600 rounded-full -z-10 transition-all duration-1000"
+                      style={{
+                        width: 
+                          lastPlacedOrder.status === "Pending" ? "0%" :
+                          lastPlacedOrder.status === "Accepted" ? "25%" :
+                          lastPlacedOrder.status === "Preparing" ? "50%" :
+                          lastPlacedOrder.status === "Ready" ? "75%" : "100%"
+                      }}
+                    ></div>
+
+                    {[
+                      { status: "Pending", label: "📋 Submitted" },
+                      { status: "Accepted", label: "👍 Accepted" },
+                      { status: "Preparing", label: "🔥 In Kitchen" },
+                      { status: "Ready", label: "🛎️ Ready!" },
+                      { status: "Completed", label: "✅ Served" }
+                    ].map((step, idx) => {
+                      const isReached = 
+                        (step.status === "Pending" && ["Pending", "Accepted", "Preparing", "Ready", "Completed"].includes(lastPlacedOrder.status)) ||
+                        (step.status === "Accepted" && ["Accepted", "Preparing", "Ready", "Completed"].includes(lastPlacedOrder.status)) ||
+                        (step.status === "Preparing" && ["Preparing", "Ready", "Completed"].includes(lastPlacedOrder.status)) ||
+                        (step.status === "Ready" && ["Ready", "Completed"].includes(lastPlacedOrder.status)) ||
+                        (step.status === "Completed" && lastPlacedOrder.status === "Completed");
+
+                      const isActive = lastPlacedOrder.status === step.status;
+
+                      return (
+                        <div key={idx} className="flex flex-col items-center space-y-2">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                            isActive ? "border-red-600 bg-white dark:bg-stone-900 text-red-600 scale-110 shadow-md ring-4 ring-red-100 dark:ring-red-900/20" :
+                            isReached ? "border-red-600 bg-red-600 text-white font-bold" :
+                            "border-gray-300 bg-gray-50 dark:border-stone-800 dark:bg-stone-850 text-gray-400"
+                          }`}>
+                            <span>{idx + 1}</span>
+                          </div>
+                          <span className={`text-[9px] uppercase tracking-wider ${isActive ? "text-red-600 font-extrabold" : isReached ? "text-gray-700 dark:text-gray-300" : "text-gray-400"}`}>
+                            {step.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Info Status block */}
+                  <div className="bg-white dark:bg-stone-850 p-4 rounded-2xl border border-gray-100 dark:border-stone-800 text-xs text-gray-600 dark:text-gray-400 space-y-2">
+                    <p className="font-bold text-gray-900 dark:text-white">
+                      💡 Status update: {
+                        lastPlacedOrder.status === "Pending" ? "We have received your order! A waiter will confirm it shortly." :
+                        lastPlacedOrder.status === "Accepted" ? "Your order is confirmed! The kitchen is getting ready to prepare your meal." :
+                        lastPlacedOrder.status === "Preparing" ? "Our specialty chefs are flame-grilling your burgers now! Get ready for maximum flavor." :
+                        lastPlacedOrder.status === "Ready" ? "Your order is ready to be served! Our waitstaff is bringing it to your table right now." :
+                        lastPlacedOrder.status === "Completed" ? "This order has been fully completed and paid. Thank you for dining with WOW BURGER!" :
+                        "This order has been cancelled by the back-office staff. Please consult a server if this was done in error."
+                      }
+                    </p>
+                    <p className="text-[11px] font-mono text-gray-400">If you want to add additional dishes, simply add them to your cart and place another order. It will be seamlessly delivered to your table as well.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* TWO COLUMN GRID FOR BROWSED BASKET & CHECKOUT FORM */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* LEFT SIDE: CART ITEMS BASKET LIST */}
+                <div className="lg:col-span-7 space-y-6">
+                  {cart.length === 0 ? (
+                    <div className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-stone-850 rounded-[2rem] p-12 text-center space-y-4">
+                      <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto animate-bounce" />
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Your Ordering Cart is Empty</h3>
+                        <p className="text-sm text-gray-500 font-sans">You haven't added any premium burger items to your cart yet.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab("home"); setCatalogCategory("all"); }}
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer inline-block"
+                      >
+                        Browse Specialty Menu
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-stone-850 rounded-[2rem] p-6 md:p-8 space-y-6">
+                      <h3 className="font-black text-lg text-gray-900 dark:text-white">Items in Basket</h3>
+
+                      <div className="divide-y divide-gray-100 dark:divide-stone-850">
+                        {cart.map((item) => (
+                          <div key={item.menuItem.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
+                            {/* Thumbnail image */}
+                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-50 dark:bg-stone-800 shrink-0 border border-gray-100 dark:border-stone-800">
+                              <img
+                                src={item.menuItem.image}
+                                alt={item.menuItem.name}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 space-y-1">
+                              <div className="flex justify-between">
+                                <h4 className="font-bold text-gray-900 dark:text-white text-sm">{item.menuItem.name}</h4>
+                                <span className="font-mono text-xs font-bold text-gray-900 dark:text-white">{item.menuItem.price * item.quantity} ETB</span>
+                              </div>
+                              <p className="text-[11px] text-gray-400 font-sans line-clamp-1">{item.menuItem.shortDescription}</p>
+
+                              {/* Controls */}
+                              <div className="flex justify-between items-center pt-2">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateCartQuantity(item.menuItem.id, item.quantity - 1)}
+                                    className="p-1 border border-gray-200 dark:border-stone-800 rounded-md hover:bg-gray-50 dark:hover:bg-stone-800 cursor-pointer text-gray-500"
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </button>
+                                  <span className="font-mono text-xs font-bold w-6 text-center text-gray-800 dark:text-white">{item.quantity}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateCartQuantity(item.menuItem.id, item.quantity + 1)}
+                                    className="p-1 border border-gray-200 dark:border-stone-800 rounded-md hover:bg-gray-50 dark:hover:bg-stone-800 cursor-pointer text-gray-500"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeFromCart(item.menuItem.id)}
+                                  className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Notes input */}
+                      <div className="border-t border-gray-100 dark:border-stone-850 pt-5 space-y-2">
+                        <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400">Kitchen & Waiter Instructions</label>
+                        <textarea
+                          rows={2}
+                          value={orderNotes}
+                          onChange={(e) => setOrderNotes(e.target.value)}
+                          placeholder="e.g., no onions, extra burger sauce, well done patty, bring cold soft drink..."
+                          className="w-full text-xs p-3 bg-gray-50 dark:bg-stone-850/30 border border-gray-200 dark:border-stone-800 rounded-xl outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white placeholder-gray-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT SIDE: CUSTOMER DETAILS & ORDER SUBMISSION */}
+                {cart.length > 0 && (
+                  <div className="lg:col-span-5 space-y-6">
+                    <form onSubmit={handlePlaceOrder} className="bg-white dark:bg-stone-900 border border-gray-100 dark:border-stone-850 rounded-[2rem] p-6 md:p-8 space-y-6 shadow-xs">
+                      <h3 className="font-black text-lg text-gray-900 dark:text-white">Checkout Details</h3>
+
+                      {/* Table Selection / Details */}
+                      <div className="p-4 bg-red-50/10 dark:bg-stone-850/40 rounded-2xl border border-red-100/30 dark:border-stone-800 space-y-3 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-gray-400">Current Assigned Table</span>
+                          <span className="bg-red-600 text-white text-[10px] font-black tracking-widest px-2.5 py-1 rounded-md uppercase">
+                            {tableNumber ? `Table ${tableNumber}` : "Not Selected"}
+                          </span>
+                        </div>
+                        
+                        {!tableNumber ? (
+                          <div className="space-y-2 pt-1">
+                            <p className="text-amber-600 dark:text-amber-400 text-[11px] font-sans font-medium">⚠️ Table number is required to route your order successfully.</p>
+                            <select
+                              required
+                              value={tableNumber || ""}
+                              onChange={(e) => setTableNumber(e.target.value)}
+                              className="w-full text-xs px-3 py-2.5 bg-white dark:bg-stone-900 border border-gray-200 dark:border-stone-800 rounded-xl outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white font-bold"
+                            >
+                              <option value="">-- Choose Your Table Number --</option>
+                              {Array.from({ length: 20 }, (_, i) => String(i + 1)).map(num => (
+                                <option key={num} value={num}>Dining Table {num}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-center text-[11px] text-gray-400 font-sans border-t border-gray-100 dark:border-stone-800 pt-2">
+                            <span>Change table number if scanned wrong table:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newTable = window.prompt("Change Table Number:", tableNumber);
+                                if (newTable) setTableNumber(newTable);
+                              }}
+                              className="text-red-600 dark:text-red-400 font-bold hover:underline"
+                            >
+                              Change Table
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Customer Info */}
+                      <div className="space-y-4 text-xs">
+                        <div>
+                          <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400 mb-1.5">Your Full Name</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g., Almaz Tesfaye"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-gray-50 focus:bg-white border border-gray-200 dark:border-stone-800 focus:border-red-500 rounded-xl outline-hidden focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400 mb-1.5">Mobile Phone Number</label>
+                          <input
+                            type="tel"
+                            required
+                            placeholder="e.g., 0911223344"
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-gray-50 focus:bg-white border border-gray-200 dark:border-stone-800 focus:border-red-500 rounded-xl outline-hidden focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white font-mono font-medium"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Bill Breakdown */}
+                      <div className="border-t border-gray-100 dark:border-stone-850 pt-5 text-xs space-y-2.5 text-gray-500">
+                        <div className="flex justify-between">
+                          <span>Subtotal Items</span>
+                          <span className="font-mono text-gray-900 dark:text-white">
+                            {cart.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0)} ETB
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Service Charge (5%)</span>
+                          <span className="font-mono text-gray-900 dark:text-white">
+                            {Math.round(cart.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0) * 0.05)} ETB
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-gray-100 dark:border-stone-850 pt-3 text-sm text-gray-900 dark:text-white font-bold">
+                          <span>Total Amount Due</span>
+                          <span className="font-mono text-red-600 dark:text-red-500 text-base">
+                            {Math.round(cart.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0) * 1.05)} ETB
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Submit button */}
+                      <button
+                        type="submit"
+                        disabled={isPlacingOrder}
+                        className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-widest py-4 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
+                      >
+                        {isPlacingOrder ? "Placing Your Order..." : "🚀 Send Order to Kitchen"}
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Aesthetic Hero Banner Campaign */}
           <div className="relative rounded-3xl overflow-hidden bg-neutral-900 text-white p-8 md:p-14 h-96 flex items-center shadow-xl border border-transparent dark:border-stone-800">
             <img
               src="https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80"
@@ -965,17 +1513,33 @@ export default function App() {
                         <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.rating}</span>
                         <span className="text-[10px] text-gray-400 font-mono">({item.reviewsCount})</span>
                       </div>
-                      <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
-                        item.isAvailable ? "text-emerald-600" : "text-red-400"
-                      }`}>
-                        {item.isAvailable ? "● In Stock" : "● Sold Out"}
-                      </span>
+                      <div className="flex items-center gap-2.5">
+                        <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                          item.isAvailable ? "text-emerald-600" : "text-red-400"
+                        }`}>
+                          {item.isAvailable ? "● In Stock" : "● Sold Out"}
+                        </span>
+                        {item.isAvailable && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(item, 1);
+                              showToast(`Added ${item.name} to cart!`);
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 shadow-sm"
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               ))
             )}
           </div>
+            </>
+          )}
         </main>
       ) : (
         /* ==================== SECURED ADMIN BACK-OFFICE ==================== */
@@ -1152,6 +1716,35 @@ export default function App() {
                         <History className="w-4 h-4" /> Security Audit logs
                       </button>
                     )}
+
+                    {/* Live Order Monitor */}
+                    <button
+                      onClick={() => setAdminTab("orders")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer relative ${
+                        adminTab === "orders"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <ClipboardList className="w-4 h-4" /> Live Order Monitor
+                      {orders.filter((o: any) => o.status === "Pending").length > 0 && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-amber-500 text-neutral-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                          {orders.filter((o: any) => o.status === "Pending").length}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* QR Code Table Generator */}
+                    <button
+                      onClick={() => setAdminTab("qrcodes")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "qrcodes"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <QrCode className="w-4 h-4" /> QR Table Generator
+                    </button>
 
                     {/* Security Passwords change */}
                     <button
@@ -1616,6 +2209,470 @@ export default function App() {
                 {adminTab === "security" && (
                   <PasswordChange onSuccessLogout={handleLogout} onNotify={showToast} />
                 )}
+
+                {/* LIVE ORDER MONITOR TAB */}
+                {adminTab === "orders" && (
+                  <div className="space-y-6 animate-fade-in font-sans">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Live Order Command Center</h2>
+                        <p className="text-sm text-gray-500 mt-1">Accept, track, and update dynamic customer table & takeaway orders in real-time.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { loadOrders(); showToast("Refreshed incoming orders!"); }}
+                          className="p-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-gray-700 dark:text-gray-300 rounded-xl transition-all cursor-pointer"
+                          title="Refresh Orders"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 font-bold px-3 py-1.5 rounded-full border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Auto-Polling Live
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Advanced Live Order Filters */}
+                    <div className="bg-gray-50 dark:bg-stone-850 p-5 rounded-3xl border border-gray-100 dark:border-stone-800 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Keyword Search */}
+                        <div className="relative">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search Customer name, phone..."
+                            value={ordersSearch}
+                            onChange={(e) => setOrdersSearch(e.target.value)}
+                            className="w-full text-xs pl-9 pr-4 py-2.5 bg-white dark:bg-stone-900 border border-gray-200 dark:border-stone-800 rounded-xl outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-gray-800 dark:text-white"
+                          />
+                        </div>
+
+                        {/* Status Filter */}
+                        <div>
+                          <select
+                            value={ordersStatusFilter}
+                            onChange={(e) => setOrdersStatusFilter(e.target.value)}
+                            className="w-full text-xs px-3 py-2.5 bg-white dark:bg-stone-900 border border-gray-200 dark:border-stone-800 rounded-xl outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-gray-800 dark:text-white"
+                          >
+                            <option value="all">All Statuses</option>
+                            <option value="Pending">Pending Approval</option>
+                            <option value="Accepted">Accepted</option>
+                            <option value="Preparing">Preparing in Kitchen</option>
+                            <option value="Ready">Ready to Serve</option>
+                            <option value="Completed">Completed / Paid</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        </div>
+
+                        {/* Table Number Filter */}
+                        <div>
+                          <select
+                            value={ordersTableFilter}
+                            onChange={(e) => setOrdersTableFilter(e.target.value)}
+                            className="w-full text-xs px-3 py-2.5 bg-white dark:bg-stone-900 border border-gray-200 dark:border-stone-800 rounded-xl outline-hidden focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all text-gray-800 dark:text-white"
+                          >
+                            <option value="all">All Tables & Takeaway</option>
+                            <option value="Takeaway">Takeaway Only</option>
+                            {Array.from({ length: 20 }, (_, i) => String(i + 1)).map(num => (
+                              <option key={num} value={num}>Table {num}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Orders Render Deck */}
+                    {(() => {
+                      const filteredOrders = orders.filter((o: any) => {
+                        const sMatch = ordersSearch ? (
+                          o.customerName.toLowerCase().includes(ordersSearch.toLowerCase()) ||
+                          o.phone.includes(ordersSearch) ||
+                          o.id.includes(ordersSearch)
+                        ) : true;
+                        const statusMatch = ordersStatusFilter === "all" ? true : o.status === ordersStatusFilter;
+                        const tableMatch = ordersTableFilter === "all" ? true : o.tableNumber === ordersTableFilter;
+                        return sMatch && statusMatch && tableMatch;
+                      });
+
+                      if (filteredOrders.length === 0) {
+                        return (
+                          <div className="py-16 text-center border-2 border-dashed border-gray-100 dark:border-stone-850 rounded-3xl">
+                            <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                            <h3 className="font-bold text-gray-800 dark:text-white">No matching orders</h3>
+                            <p className="text-xs text-gray-400 mt-1">There are no customer orders matching your filter parameters.</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                          {filteredOrders.map((order: any) => (
+                            <div
+                              key={order.id}
+                              className={`bg-white dark:bg-stone-900 border rounded-3xl p-6 space-y-4 transition-all hover:shadow-md ${
+                                order.status === "Pending"
+                                  ? "border-amber-200 dark:border-amber-900/30 bg-amber-50/5 dark:bg-amber-950/5 ring-1 ring-amber-100 dark:ring-transparent"
+                                  : order.status === "Preparing"
+                                  ? "border-blue-200 dark:border-blue-900/30 bg-blue-50/5 dark:bg-blue-950/5"
+                                  : order.status === "Ready"
+                                  ? "border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/5 dark:bg-emerald-950/5"
+                                  : "border-gray-100 dark:border-stone-850"
+                              }`}
+                            >
+                              {/* Card Header */}
+                              <div className="flex justify-between items-start gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-neutral-900 text-white dark:bg-stone-800 dark:text-gray-100 text-xs font-black tracking-wider px-2.5 py-1 rounded-lg">
+                                      {order.tableNumber && order.tableNumber !== "Takeaway" ? `Table ${order.tableNumber}` : "🥡 Takeaway"}
+                                    </span>
+                                    <span className="text-xs text-gray-400 font-mono font-medium">#{order.id.slice(-8)}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-400 font-mono">
+                                    {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(order.createdAt).toLocaleDateString()}
+                                  </p>
+                                </div>
+
+                                <div className="text-right">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none ${
+                                    order.status === "Pending" ? "bg-amber-50 text-amber-700 border border-amber-100 animate-pulse dark:bg-amber-950/20 dark:text-amber-400 dark:border-transparent" :
+                                    order.status === "Accepted" ? "bg-purple-50 text-purple-700 border border-purple-100 dark:bg-purple-950/20 dark:text-purple-400 dark:border-transparent" :
+                                    order.status === "Preparing" ? "bg-blue-50 text-blue-700 border border-blue-100 dark:bg-blue-950/20 dark:text-blue-400 dark:border-transparent" :
+                                    order.status === "Ready" ? "bg-emerald-50 text-emerald-700 border border-emerald-100 animate-bounce dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-transparent" :
+                                    order.status === "Completed" ? "bg-gray-100 text-gray-600 dark:bg-stone-800 dark:text-gray-400" :
+                                    "bg-red-50 text-red-700 border border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-transparent"
+                                  }`}>
+                                    {order.status === "Pending" && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
+                                    {order.status === "Preparing" && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>}
+                                    {order.status === "Ready" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
+                                    {order.status}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Customer Details */}
+                              <div className="bg-gray-50/50 dark:bg-stone-850/40 p-3.5 rounded-2xl text-xs space-y-1">
+                                <p className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                  <span>👤 {order.customerName}</span>
+                                  <span className="text-gray-400 font-normal">({order.phone})</span>
+                                </p>
+                                {order.notes && (
+                                  <p className="text-gray-500 italic font-sans border-l-2 border-amber-400 pl-2 mt-1">
+                                    &ldquo;{order.notes}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Ordered Items List */}
+                              <div className="space-y-1.5 py-1">
+                                <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-gray-400">Order Items Basket</p>
+                                <div className="divide-y divide-gray-100 dark:divide-stone-850 text-xs">
+                                  {order.items.map((item: any, idx: number) => (
+                                    <div key={idx} className="flex justify-between py-2 text-gray-700 dark:text-gray-300">
+                                      <span className="font-medium">
+                                        <strong className="text-red-600 font-bold mr-1.5">{item.quantity}x</strong> 
+                                        {item.itemName || "Special Menu Item"}
+                                      </span>
+                                      <span className="font-mono text-gray-400 font-bold">{item.price * item.quantity} ETB</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Financial Total & Actions */}
+                              <div className="border-t border-gray-100 dark:border-stone-850 pt-4 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                                <div className="self-start sm:self-center">
+                                  <span className="text-[10px] text-gray-400 font-mono block uppercase">Total Bill (inc. service)</span>
+                                  <span className="text-lg font-black text-red-600 dark:text-red-500 font-mono leading-none">{order.totalPrice} ETB</span>
+                                </div>
+
+                                {/* Dynamic Order Action Pipeline */}
+                                <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                                  {order.status === "Pending" && (
+                                    <>
+                                      <button
+                                        onClick={() => handleUpdateOrderStatus(order.id, "Accepted")}
+                                        className="flex-1 sm:flex-initial bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                                      >
+                                        Accept Order
+                                      </button>
+                                      <button
+                                        onClick={() => handleUpdateOrderStatus(order.id, "Cancelled")}
+                                        className="bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 text-xs font-bold px-3 py-2 rounded-xl transition-all cursor-pointer"
+                                      >
+                                        Decline
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {order.status === "Accepted" && (
+                                    <button
+                                      onClick={() => handleUpdateOrderStatus(order.id, "Preparing")}
+                                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                                    >
+                                      Start Preparing 👨‍🍳
+                                    </button>
+                                  )}
+
+                                  {order.status === "Preparing" && (
+                                    <button
+                                      onClick={() => handleUpdateOrderStatus(order.id, "Ready")}
+                                      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 animate-pulse"
+                                    >
+                                      Ready to Serve! 🛎️
+                                    </button>
+                                  )}
+
+                                  {order.status === "Ready" && (
+                                    <button
+                                      onClick={() => handleUpdateOrderStatus(order.id, "Completed")}
+                                      className="w-full sm:w-auto bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-stone-800 dark:hover:bg-stone-750 text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm"
+                                    >
+                                      Complete & Paid 💸
+                                    </button>
+                                  )}
+
+                                  {/* Print kitchen ticket */}
+                                  <button
+                                    onClick={() => {
+                                      const printWindow = window.open("", "_blank");
+                                      if (printWindow) {
+                                        const htmlLines = [
+                                          "<html>",
+                                          "<head>",
+                                          "  <title>WOW BURGER - KITCHEN TICKET</title>",
+                                          "  <style>",
+                                          "    body { font-family: 'Courier New', Courier, monospace; width: 300px; padding: 20px; color: #000; }",
+                                          "    h1 { text-align: center; font-size: 18px; margin-bottom: 5px; }",
+                                          "    .header-info { text-align: center; font-size: 12px; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }",
+                                          "    .item-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px; }",
+                                          "    .qty { font-weight: bold; margin-right: 10px; }",
+                                          "    .notes { font-style: italic; font-size: 12px; border-left: 2px solid #000; padding-left: 5px; margin: 10px 0; }",
+                                          "    .total { font-weight: bold; border-top: 1px dashed #000; margin-top: 15px; padding-top: 5px; font-size: 16px; display: flex; justify-content: space-between; }",
+                                          "    .footer { text-align: center; font-size: 10px; margin-top: 30px; border-top: 1px solid #000; padding-top: 5px; }",
+                                          "  </style>",
+                                          "</head>",
+                                          "<body>",
+                                          "  <h1>WOW BURGER</h1>",
+                                          "  <div class='header-info'>",
+                                          "    <strong>KITCHEN TICKET</strong><br>",
+                                          "    " + (order.tableNumber !== "Takeaway" ? "TABLE: " + order.tableNumber : "TAKEOUT") + "<br>",
+                                          "    ID: " + order.id + "<br>",
+                                          "    Date: " + new Date(order.createdAt).toLocaleString(),
+                                          "  </div>",
+                                          "  <div style='font-weight: bold; margin-bottom: 10px;'>Name: " + order.customerName + "</div>",
+                                          "  <div>",
+                                          order.items.map((it: any) => 
+                                            "    <div class='item-row'>" +
+                                            "      <span><span class='qty'>" + it.quantity + "x</span> " + it.itemName + "</span>" +
+                                            "      <span>" + (it.price * it.quantity) + " ETB</span>" +
+                                            "    </div>"
+                                          ).join(""),
+                                          "  </div>",
+                                          order.notes ? "  <div class='notes'>Notes: \"" + order.notes + "\"</div>" : "",
+                                          "  <div class='total'>",
+                                          "    <span>TOTAL:</span>",
+                                          "    <span>" + order.totalPrice + " ETB</span>",
+                                          "  </div>",
+                                          "  <div class='footer'>",
+                                          "    Enjoy Addis Ababa's Finest Burgers",
+                                          "  </div>",
+                                          "  <script>window.onload = function() { window.print(); window.close(); }</script>",
+                                          "</body>",
+                                          "</html>"
+                                        ];
+                                        printWindow.document.write(htmlLines.join("\n"));
+                                        printWindow.document.close();
+                                      }
+                                    }}
+                                    className="p-2 bg-gray-100 hover:bg-gray-200 dark:bg-stone-800 dark:hover:bg-stone-750 text-gray-600 dark:text-gray-300 rounded-xl transition-all cursor-pointer"
+                                    title="Print Kitchen Receipt"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* QR CODE TABLE GENERATOR TAB */}
+                {adminTab === "qrcodes" && (
+                  <div className="space-y-6 animate-fade-in font-sans">
+                    <div className="border-b border-gray-100 pb-5">
+                      <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">QR Table Code Generator</h2>
+                      <p className="text-sm text-gray-500 mt-1">Generate print-ready, scan-to-order dynamic signs for table-specific ordering.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {/* Control Form */}
+                      <div className="lg:col-span-1 bg-white dark:bg-stone-900 p-6 rounded-3xl border border-gray-100 dark:border-stone-850 shadow-xs h-fit space-y-5">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-base">Configure Table Sign</h3>
+                        
+                        <div className="space-y-4 text-xs">
+                          <div>
+                            <label className="block text-[10px] font-bold font-mono uppercase tracking-widest text-gray-400 mb-1.5">Table Number Selector</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              defaultValue="1"
+                              id="qr-table-input"
+                              className="w-full px-3 py-2.5 bg-gray-50 focus:bg-white border border-gray-200 dark:border-stone-800 focus:border-red-500 rounded-xl outline-hidden focus:ring-1 focus:ring-red-500 text-gray-800 dark:text-white font-mono font-bold"
+                            />
+                          </div>
+
+                          <div className="p-3.5 bg-gray-50 dark:bg-stone-850/40 rounded-xl border border-gray-100 dark:border-stone-800 space-y-1">
+                            <span className="text-[9px] font-black uppercase text-amber-600 block">How it works</span>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 font-sans leading-relaxed">
+                              When customers scan these generated codes, the menu opens instantly with their exact Table Number auto-assigned in the header. They can add items and submit orders directly to your Live Kitchen Monitor without waiter assistance.
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              const input = document.getElementById("qr-table-input") as HTMLInputElement;
+                              const tNum = input?.value || "1";
+                              const origin = window.location.origin;
+                              const tableUrl = `${origin}/?table=${tNum}`;
+                              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(tableUrl)}`;
+                              
+                              const printWindow = window.open("", "_blank");
+                              if (printWindow) {
+                                printWindow.document.write(`
+                                  <html>
+                                    <head>
+                                      <title>WOW BURGER - TABLE ${tNum} SIGN</title>
+                                      <style>
+                                        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; text-align: center; padding: 50px; background: #fff; color: #111; }
+                                        .card { border: 4px solid #dc2626; border-radius: 40px; padding: 50px; max-width: 450px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+                                        .logo { font-size: 32px; font-weight: 900; color: #dc2626; letter-spacing: -1px; margin-bottom: 5px; }
+                                        .subtitle { font-size: 12px; font-family: monospace; letter-spacing: 2px; text-transform: uppercase; color: #666; margin-bottom: 30px; }
+                                        .table-badge { background: #dc2626; color: #fff; font-size: 36px; font-weight: 900; display: inline-block; padding: 10px 40px; border-radius: 20px; margin-bottom: 35px; }
+                                        .qr-box { margin-bottom: 35px; display: inline-block; padding: 15px; border: 2px solid #e5e7eb; border-radius: 20px; background: #fff; }
+                                        .qr-box img { display: block; }
+                                        .action-text { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+                                        .sub-action { font-size: 12px; color: #666; margin-bottom: 30px; }
+                                        .url-text { font-size: 10px; font-family: monospace; color: #999; word-break: break-all; }
+                                      </style>
+                                    </head>
+                                    <body>
+                                      <div class="card">
+                                        <div class="logo">🔥 WOW BURGER</div>
+                                        <div class="subtitle">Digital Menu Suite</div>
+                                        <div class="table-badge">TABLE \${tNum}</div>
+                                        <br>
+                                        <div class="qr-box">
+                                          <img src="\${qrUrl}" width="240" height="240" />
+                                        </div>
+                                        <div class="action-text">SCAN TO ORDER & PAY</div>
+                                        <div class="sub-action">Instant table service • No apps required</div>
+                                        <div class="url-text">\${tableUrl}</div>
+                                      </div>
+                                      <script>window.onload = function() { window.print(); window.close(); }</script>
+                                    </body>
+                                  </html>
+                                `);
+                                printWindow.document.close();
+                              }
+                            }}
+                            className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            <Printer className="w-4 h-4" /> Print Custom Sign
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Display Grid of Standard Restaurant Tables */}
+                      <div className="lg:col-span-2 space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-base">Standard Floor Layout (Tables 1 - 8)</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {Array.from({ length: 8 }, (_, i) => i + 1).map(num => {
+                            const tableUrl = `${window.location.origin}/?table=${num}`;
+                            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(tableUrl)}`;
+                            return (
+                              <div
+                                key={num}
+                                className="bg-white dark:bg-stone-900 p-5 rounded-3xl border border-gray-100 dark:border-stone-850 flex items-center gap-4 hover:shadow-md transition-all"
+                              >
+                                <div className="border border-gray-100 dark:border-stone-800 p-2 bg-white rounded-2xl shrink-0">
+                                  <img
+                                    src={qrUrl}
+                                    alt={`Table ${num} QR`}
+                                    className="w-20 h-20"
+                                    loading="lazy"
+                                  />
+                                </div>
+                                <div className="space-y-2 flex-1 min-w-0 text-xs">
+                                  <div>
+                                    <span className="bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 font-bold px-2 py-0.5 rounded-md">
+                                      Table {num}
+                                    </span>
+                                    <h4 className="font-bold text-gray-900 dark:text-white mt-1.5 truncate">Active Sign</h4>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const printWindow = window.open("", "_blank");
+                                      if (printWindow) {
+                                        const htmlLines = [
+                                          "<html>",
+                                          "<head>",
+                                          "  <title>WOW BURGER - TABLE " + num + " SIGN</title>",
+                                          "  <style>",
+                                          "    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; text-align: center; padding: 50px; background: #fff; color: #111; }",
+                                          "    .card { border: 4px solid #dc2626; border-radius: 40px; padding: 50px; max-width: 450px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }",
+                                          "    .logo { font-size: 32px; font-weight: 900; color: #dc2626; letter-spacing: -1px; margin-bottom: 5px; }",
+                                          "    .subtitle { font-size: 12px; font-family: monospace; letter-spacing: 2px; text-transform: uppercase; color: #666; margin-bottom: 30px; }",
+                                          "    .table-badge { background: #dc2626; color: #fff; font-size: 36px; font-weight: 900; display: inline-block; padding: 10px 40px; border-radius: 20px; margin-bottom: 35px; }",
+                                          "    .qr-box { margin-bottom: 35px; display: inline-block; padding: 15px; border: 2px solid #e5e7eb; border-radius: 20px; background: #fff; }",
+                                          "    .qr-box img { display: block; }",
+                                          "    .action-text { font-size: 18px; font-weight: bold; margin-bottom: 5px; }",
+                                          "    .sub-action { font-size: 12px; color: #666; margin-bottom: 30px; }",
+                                          "    .url-text { font-size: 10px; font-family: monospace; color: #999; word-break: break-all; }",
+                                          "  </style>",
+                                          "</head>",
+                                          "<body>",
+                                          "  <div class='card'>",
+                                          "    <div class='logo'>🔥 WOW BURGER</div>",
+                                          "    <div class='subtitle'>Digital Menu Suite</div>",
+                                          "    <div class='table-badge'>TABLE " + num + "</div>",
+                                          "    <br>",
+                                          "    <div class='qr-box'>",
+                                          "      <img src='" + qrUrl + "' width='240' height='240' />",
+                                          "    </div>",
+                                          "    <div class='action-text'>SCAN TO ORDER & PAY</div>",
+                                          "    <div class='sub-action'>Instant table service • No apps required</div>",
+                                          "    <div class='url-text'>" + tableUrl + "</div>",
+                                          "  </div>",
+                                          "  <script>window.onload = function() { window.print(); window.close(); }</script>",
+                                          "</body>",
+                                          "</html>"
+                                        ];
+                                        printWindow.document.write(htmlLines.join("\n"));
+                                        printWindow.document.close();
+                                      }
+                                    }}
+                                    className="text-red-600 dark:text-red-400 font-bold hover:underline cursor-pointer flex items-center gap-1 shrink-0 mt-1"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" /> Print Layout Sign
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
             </>
           )}
@@ -1716,6 +2773,55 @@ export default function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Sticky Add to Cart control block */}
+                  <div className="bg-gray-50 dark:bg-stone-850 p-4 rounded-3xl border border-gray-100 dark:border-stone-800 flex flex-col sm:flex-row items-center justify-between gap-4 my-4 shadow-xs">
+                    <div className="flex items-center justify-between w-full sm:w-auto gap-3">
+                      <span className="text-xs font-bold font-mono text-gray-400 uppercase tracking-wider">Quantity:</span>
+                      {selectedItem.isAvailable ? (
+                        <div className="flex items-center border border-gray-200 dark:border-stone-700 rounded-xl overflow-hidden bg-white dark:bg-stone-900 shadow-xs">
+                          <button
+                            type="button"
+                            onClick={() => setModalQty(Math.max(1, modalQty - 1))}
+                            className="px-3 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-stone-800 font-bold transition-colors cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="px-4 font-mono font-bold text-gray-900 dark:text-white text-sm">
+                            {modalQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setModalQty(modalQty + 1)}
+                            className="px-3 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-stone-800 font-bold transition-colors cursor-pointer"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-bold text-red-500 font-mono uppercase">Sold Out</span>
+                      )}
+                    </div>
+                    {selectedItem.isAvailable ? (
+                      <button
+                        onClick={() => {
+                          addToCart(selectedItem, modalQty);
+                          showToast(`Added ${modalQty}x ${selectedItem.name} to cart!`);
+                          setSelectedItem(null);
+                        }}
+                        className="w-full sm:w-auto flex-1 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <ShoppingBag className="w-4 h-4" /> Add {(selectedItem.price * modalQty).toLocaleString()} ETB to Cart
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="w-full sm:w-auto flex-1 bg-gray-200 dark:bg-stone-850 text-gray-400 dark:text-gray-650 font-bold px-5 py-2.5 rounded-2xl flex items-center justify-center gap-2 cursor-not-allowed"
+                      >
+                        Currently Unavailable
+                      </button>
+                    )}
+                  </div>
 
                   {/* Reviews & Submission Area */}
                   <div className="border-t border-gray-100 dark:border-stone-850 pt-5 space-y-4">
@@ -2206,17 +3312,19 @@ export default function App() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ type: "spring", stiffness: 260, damping: 25 }}
-            className="pointer-events-auto flex items-center justify-between w-full max-w-md sm:max-w-lg bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border border-gray-100 dark:border-stone-800/80 rounded-3xl p-2 shadow-2xl transition-all"
+            className="pointer-events-auto flex items-center justify-between w-full max-w-xl sm:max-w-2xl bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border border-gray-100 dark:border-stone-800/80 rounded-3xl p-2 shadow-2xl transition-all"
             style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)" }}
           >
             {[
               { id: "home", label: "Home", icon: Home, action: () => { setActiveTab("home"); setCatalogCategory("all"); } },
               { id: "food", label: "Gourmet Food", icon: Utensils, action: () => { setActiveTab("food"); setCatalogCategory("burgers"); } },
               { id: "drinks", label: "Craft Drinks", icon: CupSoda, action: () => { setActiveTab("drinks"); setCatalogCategory("drinks"); } },
-              { id: "favorites", label: "Favorites", icon: Heart, action: () => { setActiveTab("favorites"); } }
+              { id: "favorites", label: "Favorites", icon: Heart, action: () => { setActiveTab("favorites"); } },
+              { id: "cart", label: "Cart", icon: ShoppingBag, action: () => { setActiveTab("cart"); } }
             ].map((tab) => {
               const IconComponent = tab.icon;
               const isActive = activeTab === tab.id;
+              const totalCartItemsCount = cart.reduce((acc, curr) => acc + curr.quantity, 0);
               
               return (
                 <button
@@ -2224,14 +3332,16 @@ export default function App() {
                   onClick={() => {
                     tab.action();
                     // Smooth scroll to catalog
-                    setTimeout(() => {
-                      const element = document.getElementById("menu-grid-anchor");
-                      if (element) {
-                        element.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }
-                    }, 80);
+                    if (tab.id !== "cart" && tab.id !== "favorites") {
+                      setTimeout(() => {
+                        const element = document.getElementById("menu-grid-anchor");
+                        if (element) {
+                          element.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }
+                      }, 80);
+                    }
                   }}
-                  className="relative flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-3.5 sm:px-5 rounded-2xl transition-all duration-300 cursor-pointer text-center flex-1 hover:scale-105 active:scale-95"
+                  className="relative flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-3 sm:px-4 rounded-2xl transition-all duration-300 cursor-pointer text-center flex-1 hover:scale-105 active:scale-95"
                 >
                   {/* Sliding Background Indicator */}
                   {isActive && (
@@ -2249,6 +3359,13 @@ export default function App() {
                     {tab.id === "favorites" && favorites.length > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-full leading-none flex items-center justify-center animate-pulse">
                         {favorites.length}
+                      </span>
+                    )}
+
+                    {/* Badge count for Cart items */}
+                    {tab.id === "cart" && totalCartItemsCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-full leading-none flex items-center justify-center animate-pulse">
+                        {totalCartItemsCount}
                       </span>
                     )}
                   </div>

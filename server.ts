@@ -719,6 +719,73 @@ app.get("/api/menu/:id/reviews", (req, res) => {
   res.json(Database.getReviews(id));
 });
 
+// --- Orders API Endpoints ---
+
+// Create Order (customer facing)
+app.post("/api/orders", (req, res) => {
+  const { customerName, phone, tableNumber, items, totalPrice, notes } = req.body;
+
+  if (!customerName || typeof customerName !== "string" || customerName.trim() === "") {
+    res.status(400).json({ error: "Customer Name is required" });
+    return;
+  }
+  if (!phone || typeof phone !== "string" || phone.trim() === "") {
+    res.status(400).json({ error: "Phone number is required" });
+    return;
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: "Order must contain at least one item" });
+    return;
+  }
+
+  // Validate items
+  for (const item of items) {
+    if (!item.menuItemId || typeof item.quantity !== "number" || item.quantity <= 0 || typeof item.price !== "number") {
+      res.status(400).json({ error: "Each order item must have a valid menuItemId, positive quantity, and price" });
+      return;
+    }
+  }
+
+  try {
+    const newOrder = Database.createOrder({
+      customerName,
+      phone,
+      tableNumber: tableNumber || "Takeaway",
+      totalPrice: Number(totalPrice),
+      notes: notes || "",
+      items
+    });
+    res.status(201).json(newOrder);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to place order" });
+  }
+});
+
+// List all orders (admin/dashboard facing)
+app.get("/api/orders", authenticateToken, requireRole(["Super Admin", "Manager", "Employee"]), (req, res) => {
+  res.json(Database.getOrders());
+});
+
+// Update order status (admin/dashboard facing)
+app.put("/api/orders/:id/status", authenticateToken, requireRole(["Super Admin", "Manager", "Employee"]), (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const validStatuses = ["Pending", "Accepted", "Preparing", "Ready", "Completed", "Cancelled"];
+  if (!status || !validStatuses.includes(status)) {
+    res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+    return;
+  }
+
+  const updatedOrder = Database.updateOrderStatus(id, status);
+  if (!updatedOrder) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  res.json(updatedOrder);
+});
+
 // --- VITE MIDDLEWARE SETUP ---
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
