@@ -1,109 +1,183 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useMemo, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import React, { useState, useEffect } from "react";
 import {
-  Search,
   Flame,
-  Sparkles,
-  Check,
-  ChevronRight,
-  X,
-  Clock,
-  UtensilsCrossed,
-  Heart,
-  Star,
-  Filter,
+  Search,
   SlidersHorizontal,
-  ChevronLeft,
-  LayoutDashboard,
-  Menu as MenuIcon,
-  MessageSquare,
-  Users as UsersIcon,
-  Settings as SettingsIcon,
+  Star,
   Plus,
-  Trash2,
-  Edit3,
-  Unlock,
-  LogOut,
-  Moon,
-  Sun,
-  Laptop,
-  CheckCircle,
   Eye,
-  MenuSquare,
-  Sparkle,
-  Lock,
-  Mail,
-  EyeOff,
+  Heart,
   User as UserIcon,
-  Image as ImageIcon,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Menu as MenuIcon,
+  ShoppingBag,
   Percent,
-  Tags,
-  Terminal,
-  Hamburger,
+  Settings,
+  Shield,
+  Upload,
+  Trash2,
+  ListFilter,
+  Package,
+  History,
+  CheckCircle,
+  XCircle,
+  Sun,
+  Moon,
+  Users,
+  X,
+  RefreshCw,
+  Home,
+  Utensils,
   CupSoda
 } from "lucide-react";
-import { CATEGORIES, INITIAL_MENU_ITEMS, INITIAL_REVIEWS, INITIAL_USERS, MenuItem, Category, Review, User } from "./data";
+import { motion, AnimatePresence } from "motion/react";
+import { MenuItem, Category, Review, User, Offer, Banner, Ingredient, ActivityLog, AnalyticsData, ItemImage } from "./types";
+import { api, getLoggedInUser, getAuthToken } from "./utils/api";
+import { MenuCarousel } from "./components/MenuCarousel";
+import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
+import { EmployeeManagement } from "./components/EmployeeManagement";
+import { PasswordChange } from "./components/PasswordChange";
+
+const CATEGORIES: Category[] = [
+  { id: "burgers", title: "Burgers", icon: "🍔", description: "Premium flame-grilled burgers" },
+  { id: "sides", title: "Sides", icon: "🍟", description: "Golden crispy sides & snacks" },
+  { id: "drinks", title: "Drinks", icon: "🥤", description: "Cold shakes, sodas, & brews" },
+  { id: "desserts", title: "Desserts", icon: "🍰", description: "Decadent bakes & sweet treats" }
+];
 
 export default function App() {
-  // --- Persistent & Local Database States ---
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
-    const saved = localStorage.getItem("wow_menu_items");
-    return saved ? JSON.parse(saved) : INITIAL_MENU_ITEMS;
-  });
-
-  const [categories, setCategories] = useState<Category[]>(() => {
-    const saved = localStorage.getItem("wow_categories");
-    return saved ? JSON.parse(saved) : CATEGORIES;
-  });
-
-  const [reviews, setReviews] = useState<Review[]>(() => {
-    const saved = localStorage.getItem("wow_reviews");
-    return saved ? JSON.parse(saved) : INITIAL_REVIEWS;
-  });
-
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem("wow_users");
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
-  });
-
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    const saved = localStorage.getItem("wow_favorites");
-    return saved ? JSON.parse(saved) : ["classic-wow", "retro-strawberry"];
-  });
-
+  // Theme state
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem("wow_dark_mode");
-    return saved ? JSON.parse(saved) : false;
+    return localStorage.getItem("wow_dark_mode") === "true";
   });
 
-  // Sync to localStorage on any write
-  useEffect(() => {
-    localStorage.setItem("wow_menu_items", JSON.stringify(menuItems));
-  }, [menuItems]);
+  // User state
+  const [currentUser, setCurrentUser] = useState<User | null>(getLoggedInUser());
+  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("wow_categories", JSON.stringify(categories));
-  }, [categories]);
+  // Customer Catalog State
+  const [activeTab, setActiveTab] = useState<"home" | "food" | "drinks" | "favorites">("home");
+  const [catalogItems, setCatalogItems] = useState<MenuItem[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState<string>("all");
+  const [catalogMinPrice] = useState(0);
+  const [catalogMaxPrice, setCatalogMaxPrice] = useState(1000);
+  const [catalogOnlyAvailable, setCatalogOnlyAvailable] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("wow_favorites") || '["classic-wow", "retro-strawberry"]');
+    } catch {
+      return ["classic-wow", "retro-strawberry"];
+    }
+  });
 
-  useEffect(() => {
-    localStorage.setItem("wow_reviews", JSON.stringify(reviews));
-  }, [reviews]);
+  // Detail Modal State
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedItemImages, setSelectedItemImages] = useState<ItemImage[]>([]);
+  const [itemReviews, setItemReviews] = useState<Review[]>([]);
+  const [reviewAuthor, setReviewAuthor] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("wow_users", JSON.stringify(users));
-  }, [users]);
+  // Admin View state
+  const [adminTab, setAdminTab] = useState<"dashboard" | "menu" | "employees" | "offers" | "banners" | "inventory" | "logs" | "security">("dashboard");
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  // Admin Items list pagination & queries
+  const [adminItems, setAdminItems] = useState<MenuItem[]>([]);
+  const [adminTotalItems, setAdminTotalItems] = useState(0);
+  const [adminPage, setAdminPage] = useState(1);
+  const [adminLimit, setAdminLimit] = useState(10);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminCategory, setAdminCategory] = useState("all");
+  const [adminMinPrice] = useState(0);
+  const [adminMaxPrice, setAdminMaxPrice] = useState(1000);
+  const [adminOnlyAvailable, setAdminOnlyAvailable] = useState<"all" | "true" | "false">("all");
+  const [adminSortBy, setAdminSortBy] = useState("dateAdded");
+  const [adminSortOrder, setAdminSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Admin edit/create MenuItem Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [itemName, setItemName] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+  const [itemCat, setItemCat] = useState<MenuItem["category"]>("burgers");
+  const [itemShortDesc, setItemShortDesc] = useState("");
+  const [itemFullDesc, setItemFullDesc] = useState("");
+  const [itemPrimaryImage, setItemPrimaryImage] = useState("");
+  const [itemIngredients, setItemIngredients] = useState("");
+  const [itemAllergens, setItemAllergens] = useState("");
+  const [itemBadges, setItemBadges] = useState<string[]>([]);
+  const [itemCalories, setItemCalories] = useState("500");
+  const [itemAvailable, setItemAvailable] = useState(true);
+  const [itemIsPopular, setItemIsPopular] = useState(false);
+  const [itemIsNew, setItemIsNew] = useState(true);
+
+  // Multiple Images Manager state (within Edit Modal)
+  const [uploadedImages, setUploadedImages] = useState<ItemImage[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  // System Configs lists
+  const [offersList, setOffersList] = useState<Offer[]>([]);
+  const [bannersList, setBannersList] = useState<Banner[]>([]);
+  const [ingredientsList, setIngredientsList] = useState<Ingredient[]>([]);
+  const [auditLogsList, setAuditLogsList] = useState<ActivityLog[]>([]);
+
+  // Offers modal
+  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+  const [offerTitle, setOfferTitle] = useState("");
+  const [offerSubtitle, setOfferSubtitle] = useState("");
+  const [offerCode, setOfferCode] = useState("");
+  const [offerDiscount, setOfferDiscount] = useState("15");
+  const [offerValidity, setOfferValidity] = useState("");
+  const [offerActive, setOfferActive] = useState(true);
+
+  // Banners modal
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
+  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  const [bannerTitle, setBannerTitle] = useState("");
+  const [bannerKicker, setBannerKicker] = useState("");
+  const [bannerImage, setBannerImage] = useState("");
+  const [bannerCta, setBannerCta] = useState("");
+  const [bannerLive, setBannerLive] = useState(true);
+
+  // Ingredients modal
+  const [isIngModalOpen, setIsIngModalOpen] = useState(false);
+  const [ingName, setIngName] = useState("");
+  const [ingQty, setIngQty] = useState("100");
+  const [ingMin, setIngMin] = useState("30");
+  const [ingUnit, setIngUnit] = useState("pcs");
+  const [ingSupplier, setIngSupplier] = useState("");
+
+  // Login form state
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginErr, setLoginErr] = useState("");
+
+  // Notifications
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // Sync favorites
   useEffect(() => {
     localStorage.setItem("wow_favorites", JSON.stringify(favorites));
   }, [favorites]);
 
+  // Sync dark theme
   useEffect(() => {
-    localStorage.setItem("wow_dark_mode", JSON.stringify(isDarkMode));
+    localStorage.setItem("wow_dark_mode", String(isDarkMode));
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
     } else {
@@ -111,2083 +185,1378 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // --- Aesthetic Navigation Tabs ---
-  // "home" displays the full interactive digital catalog.
-  // "food" filters grid specifically to Burgers & Sides.
-  // "drinks" filters grid specifically to Drinks.
-  // "favorites" filters specifically to selected items.
-  const [activeTab, setActiveTab] = useState<"home" | "food" | "drinks" | "favorites">("home");
-
-  // --- Dynamic Filters for Customer Site ---
-  const [selectedSubCategory, setSelectedSubCategory] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedRating, setSelectedRating] = useState<number | "all">("all");
-  const [maxPrice, setMaxPrice] = useState<number>(700);
-  const [onlyAvailable, setOnlyAvailable] = useState<boolean>(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
-
-  // --- Active Detailed Item Panel ---
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-
-  // --- Review Submission Form State ---
-  const [newReviewAuthor, setNewReviewAuthor] = useState<string>("");
-  const [newReviewRating, setNewReviewRating] = useState<number>(5);
-  const [newReviewComment, setNewReviewComment] = useState<string>("");
-  const [reviewSubmitMessage, setReviewSubmitMessage] = useState<string>("");
-
-  // --- Admin Mode States ---
-  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState<boolean>(false);
-  
-  const [adminsList, setAdminsList] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_admins");
-    if (saved) return JSON.parse(saved);
-    const initialAdmins = [
-      {
-        "id": 1,
-        "username": "admin",
-        "email": "admin@wowburger.com",
-        "password": "admin123",
-        "role": "Super Admin"
-      }
-    ];
-    localStorage.setItem("wow_admins", JSON.stringify(initialAdmins));
-    return initialAdmins;
-  });
-
-  const [loggedInAdmin, setLoggedInAdmin] = useState<any | null>(() => {
-    const saved = localStorage.getItem("wow_logged_in_admin");
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [adminUser, setAdminUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem("wow_logged_in_admin");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        id: `usr-${parsed.id}`,
-        username: parsed.username,
-        fullName: parsed.role,
-        role: parsed.role as any,
-        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
-      };
-    }
-    return null;
-  });
-
-  const [loginLogs, setLoginLogs] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_login_logs");
-    if (saved) return JSON.parse(saved);
-    const initialLogs = [
-      { id: 1, username: "admin", timestamp: "2026-06-17 03:00:22", status: "Success", ip: "192.168.1.45" },
-      { id: 2, username: "system-automated", timestamp: "2026-06-17 01:15:00", status: "Success", ip: "127.0.0.1" }
-    ];
-    localStorage.setItem("wow_login_logs", JSON.stringify(initialLogs));
-    return initialLogs;
-  });
-
-  const [offers, setOffers] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_offers");
-    if (saved) return JSON.parse(saved);
-    const initialOffers = [
-      { id: "off-1", title: "Buy 1 Get 1 Wow Classic", couponCode: "WOWBOGO", discount: "50% Off Second", status: "Active" },
-      { id: "off-2", title: "Free Strawberry Shaker with Bacon BBQ Inferno", couponCode: "SHAKEIT", discount: "Free Shake", status: "Active" }
-    ];
-    localStorage.setItem("wow_offers", JSON.stringify(initialOffers));
-    return initialOffers;
-  });
-
-  const [banners, setBanners] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_banners");
-    if (saved) return JSON.parse(saved);
-    const initialBanners = [
-      { id: "ban-1", title: "Unrivaled Beef & Shakes Combo", subtitle: "Get our classic double patty with shake for only 650 ETB!", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80", status: "Published" }
-    ];
-    localStorage.setItem("wow_banners", JSON.stringify(initialBanners));
-    return initialBanners;
-  });
-
-  const [mediaImages, setMediaImages] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_media_images");
-    if (saved) return JSON.parse(saved);
-    const initialImages = [
-      { id: "img-1", title: "Classic Gourmet Burger", url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "340 KB" },
-      { id: "img-2", title: "Crispy Sizzling Bacon Patty", url: "https://images.unsplash.com/photo-1553979459-d2229ba7433b?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "290 KB" },
-      { id: "img-3", title: "Fresh Garden Harvest Greens", url: "https://images.unsplash.com/photo-1525059696034-4967a8e1dca2?auto=format&fit=crop&w=600&q=80", resolution: "1000x667", size: "185 KB" },
-      { id: "img-4", title: "Golden Handcut Chips Tower", url: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "410 KB" },
-      { id: "img-5", title: "Aesthetic Strawberry Shaker", url: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "260 KB" },
-      { id: "img-6", title: "Rich Chocolate Fondant Cake", url: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=600&q=80", resolution: "1200x800", size: "380 KB" }
-    ];
-    localStorage.setItem("wow_media_images", JSON.stringify(initialImages));
-    return initialImages;
-  });
-
-  const [ingredients, setIngredients] = useState<any[]>(() => {
-    const saved = localStorage.getItem("wow_ingredients");
-    if (saved) return JSON.parse(saved);
-    const initialIngredients = [
-      { id: "ingr-1", name: "Premium Angus Beef Patty", quantity: 240, minAmount: 50, unit: "pcs", supplier: "Addis Livestock Direct", status: "In Stock" },
-      { id: "ingr-2", name: "Spiced Cheddar Cheese Slices", quantity: 450, minAmount: 100, unit: "slices", supplier: "Dairy Farms", status: "In Stock" },
-      { id: "ingr-3", name: "Artisanal Brioche Buns", quantity: 38, minAmount: 40, unit: "pcs", supplier: "Local Sourdough Bakery", status: "Low Stock" },
-      { id: "ingr-4", name: "Applewood Smoked Bacon", quantity: 180, minAmount: 30, unit: "slices", supplier: "Addis Livestock Direct", status: "In Stock" },
-      { id: "ingr-5", name: "Organic Ripe Strawberries", quantity: 15, minAmount: 10, unit: "kg", supplier: "Shola Organic Groceries", status: "In Stock" },
-      { id: "ingr-6", name: "Belgian Sweet Dark Chocolate", quantity: 2, minAmount: 5, unit: "kg", supplier: "Fine Importers LLC", status: "Out of Stock" }
-    ];
-    localStorage.setItem("wow_ingredients", JSON.stringify(initialIngredients));
-    return initialIngredients;
-  });
-
-  const [selectedRoleForLogin, setSelectedRoleForLogin] = useState<"Super Admin" | "Admin" | "Menu Manager" | "Viewer">("Super Admin");
-  const [adminActiveSection, setAdminActiveSection] = useState<
-    | "dashboard"
-    | "categories"
-    | "items"
-    | "ingredients"
-    | "images"
-    | "offers"
-    | "banners"
-    | "reviews"
-    | "settings"
-    | "users"
-    | "logs"
-    | "logout"
-  >("dashboard");
-  const [adminSearch, setAdminSearch] = useState<string>("");
-
-  // --- Login Form State Parameters ---
-  const [loginUsername, setLoginUsername] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
-  const [loginShowPassword, setLoginShowPassword] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginSuccessMsg, setLoginSuccessMsg] = useState("");
-
-  // Form states for custom sections
-  const [offerFormTitle, setOfferFormTitle] = useState("");
-  const [offerFormCoupon, setOfferFormCoupon] = useState("");
-  const [offerFormDiscount, setOfferFormDiscount] = useState("");
-  const [offerFormStatus, setOfferFormStatus] = useState("Active");
-
-  const [bannerFormTitle, setBannerFormTitle] = useState("");
-  const [bannerFormSubtitle, setBannerFormSubtitle] = useState("");
-  const [bannerFormImage, setBannerFormImage] = useState("");
-  const [bannerFormStatus, setBannerFormStatus] = useState("Published");
-
-  const [imageFormTitle, setImageFormTitle] = useState("");
-  const [imageFormUrl, setImageFormUrl] = useState("");
-
-  const [ingFormName, setIngFormName] = useState("");
-  const [ingFormQty, setIngFormQty] = useState<number>(100);
-  const [ingFormMin, setIngFormMin] = useState<number>(30);
-  const [ingFormUnit, setIngFormUnit] = useState("pcs");
-  const [ingFormSupplier, setIngFormSupplier] = useState("");
-
-  useEffect(() => {
-    if (loggedInAdmin) {
-      localStorage.setItem("wow_logged_in_admin", JSON.stringify(loggedInAdmin));
-    } else {
-      localStorage.removeItem("wow_logged_in_admin");
-    }
-  }, [loggedInAdmin]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_admins", JSON.stringify(adminsList));
-  }, [adminsList]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_login_logs", JSON.stringify(loginLogs));
-  }, [loginLogs]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_offers", JSON.stringify(offers));
-  }, [offers]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_banners", JSON.stringify(banners));
-  }, [banners]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_media_images", JSON.stringify(mediaImages));
-  }, [mediaImages]);
-
-  useEffect(() => {
-    localStorage.setItem("wow_ingredients", JSON.stringify(ingredients));
-  }, [ingredients]);
-
-  // --- Admin CRUD Form states ---
-  // Category Form
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [catFormId, setCatFormId] = useState("");
-  const [catFormTitle, setCatFormTitle] = useState("");
-  const [catFormIcon, setCatFormIcon] = useState("🍔");
-  const [catFormDesc, setCatFormDesc] = useState("");
-
-  // Menu Item Form
-  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [itemFormId, setItemFormId] = useState("");
-  const [itemFormName, setItemFormName] = useState("");
-  const [itemFormPrice, setItemFormPrice] = useState<number>(350);
-  const [itemFormCategory, setItemFormCategory] = useState<"burgers" | "sides" | "drinks" | "desserts">("burgers");
-  const [itemFormShortDesc, setItemFormShortDesc] = useState("");
-  const [itemFormFullDesc, setItemFormFullDesc] = useState("");
-  const [itemFormImage, setItemFormImage] = useState("");
-  const [itemFormIngredients, setItemFormIngredients] = useState<string>("Beef Patty, Cheddar Cheese, Tomato, Pickles, WOW Sauce");
-  const [itemFormCalories, setItemFormCalories] = useState<number>(650);
-  const [itemFormIsAvailable, setItemFormIsAvailable] = useState<boolean>(true);
-  const [itemFormIsPopular, setItemFormIsPopular] = useState<boolean>(false);
-  const [itemFormIsNew, setItemFormIsNew] = useState<boolean>(false);
-
-  // Review Form (Quick addition / simulation)
-  const [reviewFormItem, setReviewFormItem] = useState<string>("");
-  const [reviewFormAuthor, setReviewFormAuthor] = useState<string>("");
-  const [reviewFormComment, setReviewFormComment] = useState<string>("");
-  const [reviewFormRating, setReviewFormRating] = useState<number>(5);
-
-  // User Form
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [userFormUsername, setUserFormUsername] = useState("");
-  const [userFormFullname, setUserFormFullname] = useState("");
-  const [userFormRole, setUserFormRole] = useState<"Super Admin" | "Admin" | "Menu Manager" | "Viewer">("Admin");
-  const [userFormAvatar, setUserFormAvatar] = useState("");
-
-  const [toastMessage, setToastMessage] = useState<string>("");
-
-  // Helper trigger
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(""), 4000);
-  };
-
-  // Switch Bottom Navigation Tabs & Preset Sub-Category Filters
-  const handleTabChange = (tab: "home" | "food" | "drinks" | "favorites") => {
-    setActiveTab(tab);
-    if (tab === "food") {
-      // Immediately display either "burgers" or let subcategories hold relevant sides
-      setSelectedSubCategory("burgers");
-    } else if (tab === "drinks") {
-      setSelectedSubCategory("drinks");
-    } else {
-      setSelectedSubCategory("all");
-    }
-  };
-
-  // --- Computed Client Filter Logic ---
-  const filteredMenuItems = useMemo(() => {
-    return menuItems.filter((item) => {
-      // 1. Bottom Navigation filter
-      if (activeTab === "food" && item.category !== "burgers" && item.category !== "sides") {
-        return false;
-      }
-      if (activeTab === "drinks" && item.category !== "drinks") {
-        return false;
-      }
-      if (activeTab === "favorites" && !favorites.includes(item.id)) {
-        return false;
-      }
-
-      // 2. Subcategory Pills
-      if (selectedSubCategory !== "all" && item.category !== selectedSubCategory) {
-        return false;
-      }
-
-      // 3. Search Query (Name, Ingredient list, or Description match)
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesName = item.name.toLowerCase().includes(query);
-        const matchesDesc = item.shortDescription.toLowerCase().includes(query) || item.fullDescription.toLowerCase().includes(query);
-        const matchesIngredients = item.ingredients.some(ing => ing.toLowerCase().includes(query));
-        if (!matchesName && !matchesDesc && !matchesIngredients) {
-          return false;
-        }
-      }
-
-      // 4. Price Slider Range
-      if (item.price > maxPrice) {
-        return false;
-      }
-
-      // 5. Star Rating Filter
-      if (selectedRating !== "all" && Math.round(item.rating) < selectedRating) {
-        return false;
-      }
-
-      // 6. Availability Filter
-      if (onlyAvailable && !item.isAvailable) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [menuItems, activeTab, selectedSubCategory, searchQuery, maxPrice, selectedRating, onlyAvailable, favorites]);
-
-  // Compute stats for current item reviews
-  const activeDetailedItem = useMemo(() => {
-    return menuItems.find((item) => item.id === selectedItemId) || null;
-  }, [selectedItemId, menuItems]);
-
-  const activeReviews = useMemo(() => {
-    if (!selectedItemId) return [];
-    return reviews.filter(rev => rev.itemId === selectedItemId);
-  }, [reviews, selectedItemId]);
-
-  const activeAverageRating = useMemo(() => {
-    if (activeReviews.length === 0) return activeDetailedItem?.rating || 4.5;
-    const sum = activeReviews.reduce((acc, curr) => acc + curr.rating, 0);
-    return parseFloat((sum / activeReviews.length).toFixed(1));
-  }, [activeReviews, activeDetailedItem]);
-
-  // Toggle favorite list state
-  const toggleFavorite = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (favorites.includes(id)) {
-      setFavorites(prev => prev.filter(item => item !== id));
-      showToast("Removed from favorites");
-    } else {
-      setFavorites(prev => [...prev, id]);
-      showToast("Added to favorites ❤️");
-    }
-  };
-
-  // Handle client-side review submission
-  const handleAddReview = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newReviewAuthor.trim() || !newReviewComment.trim()) {
-      setReviewSubmitMessage("Please supply your name and a heartfelt comment!");
-      return;
-    }
-
-    const newRev: Review = {
-      id: `custom-rev-${Date.now()}`,
-      itemId: selectedItemId || "",
-      customerName: newReviewAuthor,
-      rating: newReviewRating,
-      comment: newReviewComment,
-      date: new Date().toISOString().split("T")[0]
-    };
-
-    const updatedReviews = [newRev, ...reviews];
-    setReviews(updatedReviews);
-
-    // Recalculate menu rating average for this specific item in menuItems state
-    const siblingReviews = updatedReviews.filter(r => r.itemId === selectedItemId);
-    const sum = siblingReviews.reduce((acc, curr) => acc + curr.rating, 0);
-    const newAvg = parseFloat((sum / siblingReviews.length).toFixed(1));
-
-    setMenuItems(prev => prev.map(m => {
-      if (m.id === selectedItemId) {
-        return {
-          ...m,
-          rating: newAvg,
-          reviewsCount: siblingReviews.length
-        };
-      }
-      return m;
-    }));
-
-    setNewReviewAuthor("");
-    setNewReviewComment("");
-    setReviewSubmitMessage("Review posted successfully! Thank you so much.");
-    showToast("Review submitted! ⭐");
-    setTimeout(() => setReviewSubmitMessage(""), 3500);
-  };
-
-  // --- Admin Login Verify action ---
-  const handleAdminVerifyLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError("");
-    setLoginSuccessMsg("");
-
-    if (!loginUsername.trim()) {
-      setLoginError("Username is required");
-      return;
-    }
-    if (!loginPassword.trim()) {
-      setLoginError("Password is required");
-      return;
-    }
-
-    // Lookup credentials
-    const foundAdmin = adminsList.find(
-      (a) =>
-        (a.username.toLowerCase() === loginUsername.trim().toLowerCase() ||
-          a.email?.toLowerCase() === loginUsername.trim().toLowerCase()) &&
-        a.password === loginPassword.trim()
-    );
-
-    if (!foundAdmin) {
-      setLoginError("Invalid username or password");
-      return;
-    }
-
-    setIsLoggingIn(true);
-    
-    // Simulate successful login sequence
-    setTimeout(() => {
-      setIsLoggingIn(false);
-      setLoginSuccessMsg("Access Granted! Fetching workspace secure tokens...");
-      
-      setLoggedInAdmin(foundAdmin);
-      setAdminUser({
-        id: `usr-${foundAdmin.id}`,
-        username: foundAdmin.username,
-        fullName: foundAdmin.role,
-        role: foundAdmin.role as any,
-        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"
+  // Fetch customer catalog items
+  const fetchCatalog = async () => {
+    try {
+      const isFavoritesTab = activeTab === "favorites";
+      const catFilter = isFavoritesTab ? "all" : (activeTab === "food" ? "burgers" : activeTab === "drinks" ? "drinks" : catalogCategory);
+      const res = await api.getMenu({
+        search: catalogSearch,
+        category: catFilter === "all" ? undefined : catFilter,
+        minPrice: catalogMinPrice,
+        maxPrice: catalogMaxPrice,
+        isAvailable: catalogOnlyAvailable ? true : undefined,
+        limit: 100 // Load full scrollable grid for clients
       });
 
-      // Append code to login logs
-      const nextLogId = loginLogs.length > 0 ? Math.max(...loginLogs.map(l => l.id)) + 1 : 1;
-      const newLog = {
-        id: nextLogId,
-        username: foundAdmin.username,
-        timestamp: new Date().toLocaleString(),
-        status: "Success",
-        ip: "192.168.1.100"
-      };
-      setLoginLogs(prev => [newLog, ...prev]);
+      let items = [...res.data];
 
-      showToast("Welcome back! Login Successful 🍔");
+      // Special handling for Client "sides" which fall under "food" tab
+      if (activeTab === "food") {
+        const sidesRes = await api.getMenu({
+          search: catalogSearch,
+          category: "sides",
+          minPrice: catalogMinPrice,
+          maxPrice: catalogMaxPrice,
+          isAvailable: catalogOnlyAvailable ? true : undefined,
+          limit: 100
+        });
+        items = [...items, ...sidesRes.data];
+      }
 
-      // Reset fields
-      setLoginUsername("");
-      setLoginPassword("");
-    }, 1500);
-  };
+      // If active tab is favorites, filter the list client side using favorites IDs
+      if (isFavoritesTab) {
+        items = items.filter((item) => favorites.includes(item.id));
+      }
 
-  // --- Admin Login Verification ---
-  const handleAdminLogin = (role: "Super Admin" | "Admin" | "Menu Manager" | "Viewer") => {
-    let matched = adminsList.find((a) => a.role === role);
-    if (!matched) {
-      const newAdmin = {
-        id: adminsList.length + 1,
-        username: role.toLowerCase().replace(/\s+/g, ""),
-        email: `${role.toLowerCase().replace(/\s+/g, "")}@wowburger.com`,
-        password: "admin123",
-        role: role
-      };
-      setAdminsList((prev) => [...prev, newAdmin]);
-      matched = newAdmin;
-    }
-    setLoggedInAdmin(matched);
-    setAdminUser({
-      id: `usr-${matched.id}`,
-      username: matched.username,
-      fullName: matched.username.toUpperCase(),
-      role: matched.role as any,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
-    });
-    showToast(`Session shifted: now logged in as ${matched.username} (${matched.role})`);
-  };
-
-  // --- Admin Dashboard Statistics ---
-  const stats = useMemo(() => {
-    const totalCategories = categories.length;
-    const totalMenuItems = menuItems.length;
-    const availableItems = menuItems.filter(item => item.isAvailable).length;
-    const activeOffers = offers.length;
-    const totalReviews = reviews.length;
-
-    return {
-      totalCategories,
-      totalMenuItems,
-      availableItems,
-      activeOffers,
-      totalReviews
-    };
-  }, [menuItems, categories, reviews, offers]);
-
-  // --- Admin Permission Check Helper ---
-  // Real authorization levels to showcase enterprise-grade security logic
-  const hasWritePermission = () => {
-    if (!adminUser) return false;
-    // Viewer role has read-only/simulated access
-    if (adminUser.role === "Viewer") return false;
-    return true; // Super Admin, Admin, and Menu Manager can execute writes
-  };
-
-  const checkPermissionAndAction = (action: () => void) => {
-    if (hasWritePermission()) {
-      action();
-    } else {
-      showToast("❌ Permission Denied: Viewers have read-only access.");
+      setCatalogItems(items);
+    } catch (err: any) {
+      showToast("Could not sync food catalog.", "error");
     }
   };
 
-  // --- Admin CRUD logic: Categories ---
-  const handleSaveCategory = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchCatalog();
+  }, [activeTab, catalogSearch, catalogCategory, catalogMaxPrice, catalogOnlyAvailable, favorites]);
+
+  // Fetch admin items list
+  const fetchAdminItems = async () => {
+    try {
+      const res = await api.getMenu({
+        page: adminPage,
+        limit: adminLimit,
+        search: adminSearch,
+        category: adminCategory === "all" ? undefined : adminCategory,
+        minPrice: adminMinPrice,
+        maxPrice: adminMaxPrice,
+        isAvailable: adminOnlyAvailable === "all" ? undefined : adminOnlyAvailable === "true",
+        sortBy: adminSortBy,
+        sortOrder: adminSortOrder
+      });
+      setAdminItems(res.data);
+      setAdminTotalItems(res.totalItems);
+    } catch (e) {
+      showToast("Error paging menu items.", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchAdminItems();
+    }
+  }, [currentUser, adminPage, adminLimit, adminSearch, adminCategory, adminOnlyAvailable, adminSortBy, adminSortOrder]);
+
+  // Load dashboards and BI
+  const loadAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const report = await api.getAnalytics();
+      setAnalyticsData(report);
+    } catch (e: any) {
+      showToast("BI server query failed.", "error");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  // Load other listings
+  const loadOffers = async () => {
+    try {
+      const res = await api.getOffers();
+      setOffersList(res);
+    } catch {}
+  };
+
+  const loadBanners = async () => {
+    try {
+      const res = await api.getBanners();
+      setBannersList(res);
+    } catch {}
+  };
+
+  const loadIngredients = async () => {
+    try {
+      const res = await api.getIngredients();
+      setIngredientsList(res);
+    } catch {}
+  };
+
+  const loadAuditLogs = async () => {
+    try {
+      const res = await api.getLogs();
+      setAuditLogsList(res);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      if (adminTab === "dashboard") loadAnalytics();
+      if (adminTab === "offers") loadOffers();
+      if (adminTab === "banners") loadBanners();
+      if (adminTab === "inventory") loadIngredients();
+      if (adminTab === "logs" && currentUser.role === "Super Admin") loadAuditLogs();
+    }
+  }, [currentUser, adminTab]);
+
+  // Handle Login
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    checkPermissionAndAction(() => {
-      if (!catFormId.trim() || !catFormTitle.trim()) {
-        showToast("Please fill all required fields");
-        return;
-      }
-      if (editingCategory) {
-        setCategories(prev => prev.map(c => c.id === editingCategory.id ? { ...c, title: catFormTitle, icon: catFormIcon, description: catFormDesc } : c));
-        showToast("Category updated successfully!");
-      } else {
-        const idLower = catFormId.toLowerCase().trim().replace(/\s+/g, "-");
-        if (categories.some(c => c.id === idLower)) {
-          showToast("Category code ID already exists!");
-          return;
-        }
-        setCategories(prev => [...prev, { id: idLower as any, title: catFormTitle, icon: catFormIcon, description: catFormDesc }]);
-        showToast("New category created successfully!");
-      }
-      resetCategoryForm();
-    });
+    setLoginErr("");
+    setLoginLoading(true);
+    try {
+      const res = await api.login(loginUser, loginPass);
+      setCurrentUser(res.user);
+      showToast(`Welcome back, ${res.user.firstName}! Session authorized.`);
+      setLoginUser("");
+      setLoginPass("");
+    } catch (err: any) {
+      setLoginErr(err.message || "Invalid credentials.");
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
-  const handleDeleteCategory = (catId: string) => {
-    checkPermissionAndAction(() => {
-      setCategories(prev => prev.filter(c => c.id !== catId));
-      showToast("Category deleted permanently");
-    });
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setIsAdminPortalOpen(false);
+    showToast("Session closed successfully.");
   };
 
-  const resetCategoryForm = () => {
-    setEditingCategory(null);
-    setCatFormId("");
-    setCatFormTitle("");
-    setCatFormIcon("🍔");
-    setCatFormDesc("");
+  // Trigger Details overlay (increments view count dynamically)
+  const viewDetails = async (item: MenuItem) => {
+    try {
+      setSelectedItem(item);
+      const res = await api.getMenuItem(item.id);
+      setSelectedItem(res);
+      setSelectedItemImages(res.images || []);
+      
+      const revs = await api.getReviews(item.id);
+      setItemReviews(revs);
+    } catch {
+      showToast("Failed to fetch full item details.", "error");
+    }
   };
 
-  // --- Admin CRUD logic: Menu Items ---
-  const handleSaveMenuItem = (e: React.FormEvent) => {
+  // Review Submit
+  const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    checkPermissionAndAction(() => {
-      if (!itemFormName.trim() || !itemFormShortDesc.trim() || !itemFormImage.trim()) {
-        showToast("Please fill Name, Short Description, and Image URL");
-        return;
-      }
-
-      const ingList = itemFormIngredients.split(",").map(i => i.trim()).filter(Boolean);
-
-      if (editingItem) {
-        setMenuItems(prev => prev.map(item => {
-          if (item.id === editingItem.id) {
-            return {
-              ...item,
-              name: itemFormName,
-              price: Number(itemFormPrice),
-              category: itemFormCategory,
-              shortDescription: itemFormShortDesc,
-              fullDescription: itemFormFullDesc || itemFormShortDesc,
-              image: itemFormImage,
-              ingredients: ingList,
-              calories: Number(itemFormCalories),
-              isAvailable: itemFormIsAvailable,
-              isPopular: itemFormIsPopular,
-              isNew: itemFormIsNew
-            };
-          }
-          return item;
-        }));
-        showToast("Menu Item updated successfully!");
-      } else {
-        const newId = itemFormId.trim().toLowerCase().replace(/\s+/g, "-") || `item-${Date.now()}`;
-        if (menuItems.some(i => i.id === newId)) {
-          showToast("Item code identifier already exists!");
-          return;
-        }
-        const createdItem: MenuItem = {
-          id: newId,
-          name: itemFormName,
-          price: Number(itemFormPrice),
-          category: itemFormCategory,
-          shortDescription: itemFormShortDesc,
-          fullDescription: itemFormFullDesc || itemFormShortDesc,
-          image: itemFormImage,
-          ingredients: ingList,
-          allergens: ["Wheat (Gluten)"],
-          dietaryBadges: itemFormCategory === "burgers" ? [] : ["Vegetarian"],
-          calories: Number(itemFormCalories),
-          rating: 5.0,
-          reviewsCount: 0,
-          isAvailable: itemFormIsAvailable,
-          isPopular: itemFormIsPopular,
-          isNew: itemFormIsNew
-        };
-        setMenuItems(prev => [createdItem, ...prev]);
-        showToast("New menu item created!");
-      }
-      resetItemForm();
-    });
+    if (!reviewAuthor || !reviewComment) {
+      showToast("Reviewer name and comments are required.", "error");
+      return;
+    }
+    setReviewLoading(true);
+    try {
+      await api.submitReview(selectedItem!.id, reviewAuthor, reviewRating, reviewComment);
+      showToast("Thank you for your review! Rating updated.");
+      setReviewAuthor("");
+      setReviewComment("");
+      
+      // Reload reviews
+      const revs = await api.getReviews(selectedItem!.id);
+      setItemReviews(revs);
+      
+      // Re-sync detail item
+      const itemDetail = await api.getMenuItem(selectedItem!.id);
+      setSelectedItem(itemDetail);
+      fetchCatalog(); // update ratings on main grid
+    } catch (err: any) {
+      showToast(err.message || "Review post failed.", "error");
+    } finally {
+      setReviewLoading(false);
+    }
   };
 
-  const handleDeleteItem = (itemId: string) => {
-    checkPermissionAndAction(() => {
-      setMenuItems(prev => prev.filter(i => i.id !== itemId));
-      showToast("Menu item removed");
-    });
-  };
-
-  const startEditItem = (item: MenuItem) => {
+  // MenuItem Edit modal open
+  const openEditMenuItem = async (item: MenuItem | null) => {
     setEditingItem(item);
-    setItemFormId(item.id);
-    setItemFormName(item.name);
-    setItemFormPrice(item.price);
-    setItemFormCategory(item.category);
-    setItemFormShortDesc(item.shortDescription);
-    setItemFormFullDesc(item.fullDescription);
-    setItemFormImage(item.image);
-    setItemFormIngredients(item.ingredients.join(", "));
-    setItemFormCalories(item.calories);
-    setItemFormIsAvailable(item.isAvailable);
-    setItemFormIsPopular(!!item.isPopular);
-    setItemFormIsNew(!!item.isNew);
-  };
-
-  const resetItemForm = () => {
-    setEditingItem(null);
-    setItemFormId("");
-    setItemFormName("");
-    setItemFormPrice(350);
-    setItemFormCategory("burgers");
-    setItemFormShortDesc("");
-    setItemFormFullDesc("");
-    setItemFormImage("https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80");
-    setItemFormIngredients("Beef Patty, Cheddar Cheese, Tomato, Pickles, WOW Sauce");
-    setItemFormCalories(650);
-    setItemFormIsAvailable(true);
-    setItemFormIsPopular(false);
-    setItemFormIsNew(false);
-  };
-
-  // --- Admin CRUD logic: Reviews ---
-  const handleDeleteReview = (revId: string) => {
-    checkPermissionAndAction(() => {
-      setReviews(prev => prev.filter(r => r.id !== revId));
-      showToast("Review deleted successfully");
-    });
-  };
-
-  const handleSimulateReview = (e: React.FormEvent) => {
-    e.preventDefault();
-    checkPermissionAndAction(() => {
-      if (!reviewFormItem || !reviewFormAuthor.trim() || !reviewFormComment.trim()) {
-        showToast("Please fill all review generation fields");
-        return;
+    if (item) {
+      setItemName(item.name);
+      setItemPrice(String(item.price));
+      setItemCat(item.category);
+      setItemShortDesc(item.shortDescription);
+      setItemFullDesc(item.fullDescription);
+      setItemPrimaryImage(item.image);
+      setItemIngredients(item.ingredients.join(", "));
+      setItemAllergens(item.allergens.join(", "));
+      setItemBadges(item.dietaryBadges);
+      setItemCalories(String(item.calories));
+      setItemAvailable(item.isAvailable);
+      setItemIsPopular(item.isPopular);
+      setItemIsNew(item.isNew);
+      
+      // Load all associated images
+      try {
+        const imgs = await api.getItemImages(item.id);
+        setUploadedImages(imgs);
+      } catch {
+        setUploadedImages([]);
       }
-      const newRev: Review = {
-        id: `rev-${Date.now()}`,
-        itemId: reviewFormItem,
-        customerName: reviewFormAuthor,
-        rating: reviewFormRating,
-        comment: reviewFormComment,
-        date: new Date().toISOString().split("T")[0]
-      };
-      setReviews(prev => [newRev, ...prev]);
-      showToast("Review simulated!");
-      setReviewFormAuthor("");
-      setReviewFormComment("");
-    });
+    } else {
+      setItemName("");
+      setItemPrice("");
+      setItemCat("burgers");
+      setItemShortDesc("");
+      setItemFullDesc("");
+      setItemPrimaryImage("");
+      setItemIngredients("");
+      setItemAllergens("");
+      setItemBadges([]);
+      setItemCalories("500");
+      setItemAvailable(true);
+      setItemIsPopular(false);
+      setItemIsNew(true);
+      setUploadedImages([]);
+    }
+    setPreviewUrl(null);
+    setSelectedFile(null);
+    setIsEditModalOpen(true);
   };
 
-  // --- Admin CRUD logic: Users ---
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    checkPermissionAndAction(() => {
-      if (!userFormUsername.trim() || !userFormFullname.trim()) {
-        showToast("Please enter both username and full name");
-        return;
-      }
-      if (editingUser) {
-        setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, username: userFormUsername, fullName: userFormFullname, role: userFormRole, avatar: userFormAvatar || u.avatar } : u));
-        showToast("User account revised!");
+    if (!itemName || !itemPrice || !itemCat) {
+      showToast("Name, category and price are required fields.", "error");
+      return;
+    }
+
+    const payload = {
+      name: itemName,
+      price: parseFloat(itemPrice),
+      category: itemCat,
+      shortDescription: itemShortDesc,
+      fullDescription: itemFullDesc,
+      image: itemPrimaryImage || "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80",
+      ingredients: itemIngredients.split(",").map(i => i.trim()).filter(Boolean),
+      allergens: itemAllergens.split(",").map(a => a.trim()).filter(Boolean),
+      dietaryBadges: itemBadges,
+      calories: parseInt(itemCalories) || 500,
+      isAvailable: itemAvailable,
+      isPopular: itemIsPopular,
+      isNew: itemIsNew
+    };
+
+    try {
+      if (editingItem) {
+        await api.updateMenuItem(editingItem.id, payload);
+        showToast("Menu Item updated successfully.");
       } else {
-        const newUser: User = {
-          id: `usr-${Date.now()}`,
-          username: userFormUsername.toLowerCase().trim(),
-          fullName: userFormFullname,
-          role: userFormRole,
-          avatar: userFormAvatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80`
-        };
-        setUsers(prev => [...prev, newUser]);
-        showToast("New administrator role provisioned");
+        await api.createMenuItem(payload);
+        showToast("New Menu Item added to catalog.");
       }
-      resetUserForm();
-    });
+      setIsEditModalOpen(false);
+      fetchAdminItems();
+    } catch (err: any) {
+      showToast(err.message || "Failed to save item.", "error");
+    }
   };
 
-  const handleDeleteUser = (usrId: string) => {
-    checkPermissionAndAction(() => {
-      if (usrId === adminUser?.id) {
-        showToast("❌ Unable to delete yourself.");
+  const handleDeleteMenuItem = async (id: string) => {
+    // Only Super Admin & Manager can delete records
+    if (currentUser?.role === "Employee") {
+      showToast("Access Denied: Employees cannot delete system records.", "error");
+      return;
+    }
+    if (!window.confirm("Are you sure you want to delete this menu item? This will trigger cascades on images and reviews!")) {
+      return;
+    }
+    try {
+      await api.deleteMenuItem(id);
+      showToast("Item and all nested dependencies purged.");
+      fetchAdminItems();
+    } catch (e: any) {
+      showToast(e.message || "Purge failed.", "error");
+    }
+  };
+
+  // --- Image Upload & Previews ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        showToast("File is too large! Maximum limit is 5MB.", "error");
         return;
       }
-      setUsers(prev => prev.filter(u => u.id !== usrId));
-      showToast("User authority terminated");
-    });
+      // Check type
+      const allowed = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
+      if (!allowed.includes(file.type)) {
+        showToast("Unsupported file type. Please use JPG, PNG, or WEBP.", "error");
+        return;
+      }
+
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const resetUserForm = () => {
-    setEditingUser(null);
-    setUserFormUsername("");
-    setUserFormFullname("");
-    setUserFormRole("Admin");
-    setUserFormAvatar("");
+  const handleUploadImageForMenuItem = async () => {
+    if (!editingItem || !selectedFile) return;
+    setUploadLoading(true);
+    try {
+      const isPrimary = uploadedImages.length === 0; // Make primary if first image
+      const newImg = await api.uploadItemImage(editingItem.id, selectedFile, isPrimary);
+      showToast("Secure image uploaded successfully.");
+      
+      // Update primary image on form if it was primary
+      if (isPrimary) {
+        setItemPrimaryImage(newImg.imagePath);
+      }
+
+      // Re-fetch images list
+      const imgs = await api.getItemImages(editingItem.id);
+      setUploadedImages(imgs);
+      
+      // Reset upload state
+      setPreviewUrl(null);
+      setSelectedFile(null);
+    } catch (e: any) {
+      showToast(e.message || "Upload failed.", "error");
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleSetPrimaryImage = async (imgId: string) => {
+    if (!editingItem) return;
+    try {
+      await api.setPrimaryImage(editingItem.id, imgId);
+      showToast("Primary image updated successfully.");
+      
+      // Find the image and update display
+      const primaryImg = uploadedImages.find(i => i.id === imgId);
+      if (primaryImg) {
+        setItemPrimaryImage(primaryImg.imagePath);
+      }
+
+      const imgs = await api.getItemImages(editingItem.id);
+      setUploadedImages(imgs);
+    } catch (e: any) {
+      showToast(e.message || "Failed to set primary.", "error");
+    }
+  };
+
+  const handleDeleteItemImage = async (imgId: string) => {
+    if (!editingItem) return;
+    if (uploadedImages.length <= 1) {
+      showToast("Cannot delete the only image. Please upload a secondary first.", "error");
+      return;
+    }
+    if (!window.confirm("Are you sure you want to delete this image?")) return;
+    try {
+      await api.deleteItemImage(editingItem.id, imgId);
+      showToast("Image removed.");
+      
+      const imgs = await api.getItemImages(editingItem.id);
+      setUploadedImages(imgs);
+      
+      // Set the first remaining as primary inside form display
+      const newPrimary = imgs.find(i => i.isPrimary);
+      if (newPrimary) {
+        setItemPrimaryImage(newPrimary.imagePath);
+      }
+    } catch (e: any) {
+      showToast(e.message || "Failed to delete.", "error");
+    }
+  };
+
+  // --- Offers Controls ---
+  const handleSaveOffer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      title: offerTitle,
+      subtitle: offerSubtitle,
+      promoCode: offerCode,
+      discountPercent: parseInt(offerDiscount),
+      validity: offerValidity,
+      isActive: offerActive
+    };
+    try {
+      if (editingOffer) {
+        await api.updateOffer(editingOffer.id, payload);
+        showToast("Special offer updated.");
+      } else {
+        await api.createOffer(payload);
+        showToast("New special offer launched.");
+      }
+      setIsOfferModalOpen(false);
+      loadOffers();
+    } catch (e: any) {
+      showToast(e.message || "Offer save failed.", "error");
+    }
+  };
+
+  const handleDeleteOffer = async (id: number) => {
+    if (!window.confirm("Delete this special offer?")) return;
+    try {
+      await api.deleteOffer(id);
+      showToast("Offer removed.");
+      loadOffers();
+    } catch {}
+  };
+
+  // --- Banners Controls ---
+  const handleSaveBanner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      title: bannerTitle,
+      kicker: bannerKicker,
+      imageUrl: bannerImage || "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
+      ctaText: bannerCta,
+      isLive: bannerLive
+    };
+    try {
+      if (editingBanner) {
+        await api.updateBanner(editingBanner.id, payload);
+        showToast("Banner campaign updated.");
+      } else {
+        await api.createBanner(payload);
+        showToast("Banner campaign created.");
+      }
+      setIsBannerModalOpen(false);
+      loadBanners();
+    } catch (e: any) {
+      showToast(e.message || "Banner save failed.", "error");
+    }
+  };
+
+  // --- Ingredients Controls ---
+  const handleSaveIngredient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.createIngredient({
+        name: ingName,
+        quantity: parseInt(ingQty),
+        minStock: parseInt(ingMin),
+        unit: ingUnit,
+        supplier: ingSupplier
+      });
+      showToast("Inventory item added.");
+      setIsIngModalOpen(false);
+      loadIngredients();
+    } catch (e: any) {
+      showToast(e.message || "Failed to add ingredient.", "error");
+    }
+  };
+
+  const handleRestock = async (id: number, qty: number) => {
+    try {
+      await api.restockIngredient(id, qty);
+      showToast(`Restocked ${qty} units successfully.`);
+      loadIngredients();
+    } catch {}
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-neutral-900 font-sans flex flex-col antialiased selection:bg-amber-100 selection:text-amber-900 overflow-x-hidden" id="wow-app-container">
+    <div id="wow-app-container" className="min-h-screen font-sans flex flex-col bg-[#faf9f6] text-neutral-800 transition-colors duration-300 dark:bg-stone-950 dark:text-stone-100">
       
-      {/* Toast Alert Banner */}
+      {/* Dynamic Toast Notifications */}
       <AnimatePresence>
-        {toastMessage && (
+        {toast && (
           <motion.div
-            initial={{ opacity: 0, y: -50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 16, scale: 1 }}
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#121212] text-white px-5 py-3 rounded-2xl shadow-xl border border-neutral-800 flex items-center gap-3 text-sm font-medium"
-            id="global-toast"
+            className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-xl border text-sm font-semibold font-sans backdrop-blur-md ${
+              toast.type === "success"
+                ? "bg-emerald-500/90 text-white border-emerald-400"
+                : "bg-red-500/90 text-white border-red-400"
+            }`}
           >
-            <div className="w-2 h-2 rounded-full bg-[#FFC107] animate-ping" />
-            <span>{toastMessage}</span>
+            {toast.type === "success" ? <CheckCircle className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
+            <span>{toast.message}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* --- PREMIUM BRAND HEADER --- */}
-      <header className="bg-[#121212] text-white sticky top-0 z-40 border-b border-neutral-800 shadow-md px-4" id="wow-main-header">
-        <div className="max-w-7xl mx-auto py-3.5 flex items-center justify-between">
-          
-          {/* Logo Brand Title */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setIsAdminPortalOpen(false); handleTabChange("home"); }} id="hdr-logo">
-            <div className="w-10 h-10 bg-gradient-to-tr from-[#E53935] to-[#FFC107] rounded-2xl flex items-center justify-center text-[#121212] font-black text-2xl shadow-lg shadow-amber-500/20">
-              W
-            </div>
-            <div>
+      {/* Corporate Header Nav */}
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-gray-100 dark:border-stone-850 px-4 py-4 md:px-8 flex items-center justify-between transition-colors duration-300">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setIsAdminPortalOpen(false)}>
+          <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center shadow-md shadow-red-200 dark:shadow-none">
+            <Flame className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold font-display tracking-tight text-neutral-900 dark:text-white leading-none">
+              WOW BURGER
+            </h1>
+            <span className="text-[9px] font-mono text-gray-400 uppercase tracking-widest mt-1 block">Digital Menu Suite</span>
+          </div>
+        </div>
+
+        {/* Action controls */}
+        <div className="flex items-center gap-3">
+          {/* Light/Dark Toggle */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="p-2.5 hover:bg-gray-100 dark:hover:bg-stone-800 rounded-xl transition-all text-gray-500 dark:text-gray-400 cursor-pointer"
+            aria-label="Toggle Theme"
+          >
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-neutral-600" />}
+          </button>
+
+          {/* Admin Back-office trigger */}
+          {!isAdminPortalOpen ? (
+            currentUser ? (
               <div className="flex items-center gap-2">
-                <h1 className="font-display font-black text-xl tracking-tight uppercase leading-none">
-                  WOW <span className="text-[#FFC107]">Burger</span>
-                </h1>
-                <span className="bg-red-600/20 text-[#E53935] text-[9px] font-mono tracking-widest font-black uppercase px-2 py-0.5 rounded-full border border-red-500/30">
-                  Dine & Dash
-                </span>
+                <button
+                  onClick={() => setIsAdminPortalOpen(true)}
+                  className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider bg-red-50 text-red-600 hover:bg-red-100 dark:bg-stone-800 dark:text-stone-300 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 animate-spin-slow" /> Control Deck
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="p-2.5 hover:bg-gray-100 dark:hover:bg-stone-800 text-gray-400 hover:text-red-500 rounded-xl transition-colors cursor-pointer"
+                  title="Logout"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
               </div>
-              <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-semibold leading-none mt-1">
-                Aesthetic Digital Experience
-              </p>
-            </div>
-          </div>
-
-          {/* Desktop Filter Indicators or Action buttons */}
-          <div className="flex items-center gap-3">
-            {/* Dark Mode Toggle Button */}
+            ) : (
+              <button
+                onClick={() => setIsAdminPortalOpen(true)}
+                className="flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+              >
+                <UserIcon className="w-4 h-4" /> Sign In
+              </button>
+            )
+          ) : (
             <button
-              onClick={() => setIsDarkMode(prev => !prev)}
-              className="px-3.5 py-2 rounded-xl text-[#FFC107] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 transition-all flex items-center gap-2 text-xs font-bold shadow-md cursor-pointer"
-              id="theme-toggle-btn"
-              title={isDarkMode ? "Toggle Light Mode" : "Toggle Dark Mode"}
+              onClick={() => setIsAdminPortalOpen(false)}
+              className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
             >
-              {isDarkMode ? (
-                <>
-                  <Sun className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline-block select-none">Light Mode</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-3.5 h-3.5 text-[#FFC107]" />
-                  <span className="hidden sm:inline-block select-none">Dark Mode</span>
-                </>
-              )}
+              <ShoppingBag className="w-4 h-4" /> Customer Menu
             </button>
-
-            <button
-              onClick={() => setIsAdminPortalOpen(!isAdminPortalOpen)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all duration-300 flex items-center gap-2 border ${
-                isAdminPortalOpen
-                  ? "bg-[#FFC107] text-[#121212] border-[#FFC107] shadow-lg shadow-amber-500/20"
-                  : "bg-neutral-900 text-[#FFC107] border-neutral-800 hover:bg-neutral-800"
-              }`}
-              id="btn-portal-switch"
-            >
-              {isAdminPortalOpen ? (
-                <>
-                  <UtensilsCrossed className="w-3.5 h-3.5" />
-                  <span>Customer View</span>
-                </>
-              ) : (
-                <>
-                  <Unlock className="w-3.5 h-3.5" />
-                  <span>Admin Panel</span>
-                </>
-              )}
-            </button>
-            <div className="hidden md:flex items-center gap-2">
-              <span className="bg-neutral-900 border border-neutral-800 text-[#FFC107] text-xs font-mono px-3 py-1.5 rounded-xl">
-                📍 Table #08
-              </span>
-            </div>
-          </div>
+          )}
         </div>
       </header>
 
-      {/* --- PRIMARY LAYOUT WRAPPER --- */}
-      <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row relative">
+      {/* RENDER VIEW CONTROLLER */}
+      {!isAdminPortalOpen ? (
+        /* ==================== CUSTOMER VIEW PORTAL ==================== */
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 pt-8 pb-32 md:pb-36 md:px-8 space-y-8 animate-fade-in" id="customer-view-root">
+          
+          {/* Aesthetic Hero Banner Campaign */}
+          <div className="relative rounded-3xl overflow-hidden bg-neutral-900 text-white p-8 md:p-14 h-96 flex items-center shadow-xl border border-transparent dark:border-stone-800">
+            <img
+              src="https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80"
+              alt="Crispy gourmet bacon cheeseburger"
+              className="absolute inset-0 w-full h-full object-cover opacity-45 mix-blend-overlay"
+              referrerPolicy="no-referrer"
+            />
+            <div className="relative max-w-xl space-y-4">
+              <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#FFC107] bg-[#FFC107]/15 px-3.5 py-1.5 rounded-full backdrop-blur-xs">
+                🔥 Hot & Sizzling Now
+              </span>
+              <h2 className="text-3xl md:text-5xl font-black font-display tracking-tight leading-tight">
+                Addis Ababa's Legendary Gourmet Burgers.
+              </h2>
+              <p className="text-sm md:text-base text-gray-200 max-w-md font-sans leading-relaxed">
+                Flame-grilled grass-fed premium beef patties, aged Colby Jack cheese, and signature slow-simmered house WOW sauce on toasted buttery brioche.
+              </p>
+              <button
+                onClick={() => {
+                  setActiveTab("food");
+                  document.getElementById("menu-grid-anchor")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold uppercase tracking-wider px-6 py-3 rounded-2xl shadow-lg hover:shadow-red-500/25 transition-all cursor-pointer"
+              >
+                Explore Sizzling Menu
+              </button>
+            </div>
+          </div>
 
-        {/* ==================================================================== */}
-        {/*                       1. CUSTOMER WEBSITE VIEW                       */}
-        {/* ==================================================================== */}
-        <AnimatePresence mode="wait">
-          {!isAdminPortalOpen ? (
-            <motion.div
-              key="customer-website-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="flex-1 flex flex-col"
-              id="customer-view-root"
-            >
-              
-              {/* Premium Hero Promo banner on tablet & desktop */}
-              <div className="bg-[#121212] text-white p-6 md:p-10 rounded-b-[2rem] md:rounded-3xl shadow-xl mx-0 md:mx-4 md:mt-4 relative overflow-hidden flex flex-col md:flex-row items-center gap-6 border-b border-neutral-800" id="gourmet-hero">
-                <div className="absolute right-[-20px] top-[-30px] w-72 h-72 bg-[#FFC107]/10 rounded-full blur-[100px] pointer-events-none" />
-                <div className="absolute left-[-20px] bottom-[-20px] w-60 h-60 bg-[#E53935]/15 rounded-full blur-[120px] pointer-events-none" />
-                
-                <div className="relative z-10 flex-1 space-y-3.5 text-center md:text-left">
-                  <div className="inline-flex items-center gap-2 bg-[#FFC107]/10 text-[#FFC107] text-[11px] font-extrabold tracking-widest uppercase px-3 py-1 rounded-full border border-[#FFC107]/20">
-                    <Flame className="w-3 h-3 fill-amber-500 text-[#FFC107]" /> Custom Flame Grill
-                  </div>
-                  <h2 className="font-display font-black text-3xl md:text-5xl tracking-tight leading-none text-white">
-                    Unrivaled <span className="text-[#FFC107]">Beef</span> & Delicious Shakes
-                  </h2>
-                  <p className="text-[#FAF9F6]/80 text-xs md:text-sm font-light max-w-xl leading-relaxed">
-                    Voted Addis Ababa's most dynamic artisanal burger joint. Real cheddar-saturated double beef patties, custom sourdough buns baked fresh, and signature cold milkshakes. Select any item to view premium allergen filters.
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs font-mono text-neutral-400 pt-2 border-t border-neutral-800">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-[#FFC107]" /> 11:00 AM - 11:30 PM
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      ⭐ Average 4.8 Rating
-                    </span>
-                  </div>
-                </div>
+          {/* Category Tabs Navigation */}
+          <div className="flex flex-col gap-5" id="menu-grid-anchor">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-stone-900 pb-3">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                {activeTab === "home" ? <ShoppingBag className="w-5 h-5 text-red-500" /> : activeTab === "favorites" ? <Heart className="w-5 h-5 text-red-500 fill-red-500" /> : null}
+                {activeTab === "home" ? "Full Specialty Catalog" : activeTab === "food" ? "Gourmet Food Specialties" : activeTab === "drinks" ? "Craft Beverage Collection" : "Saved Favorites"}
+              </h3>
+              <span className="text-xs text-gray-400 font-mono">Matched items: {catalogItems.length}</span>
+            </div>
 
-                {/* Side banner image featured */}
-                <div className="relative w-36 h-36 md:w-56 md:h-56 rounded-3xl overflow-hidden shadow-2xl border-4 border-neutral-800 rotate-1 flex-shrink-0">
-                  <img
-                    alt="WOW Burger Signature"
-                    src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80"
-                    className="w-full h-full object-cover scale-105"
-                  />
-                  <div className="absolute top-2 right-2 bg-[#E53935] text-white font-mono text-[9px] font-black px-2 py-0.5 rounded">
-                    HOT #1
-                  </div>
-                </div>
+            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-2">
+              <button
+                onClick={() => { setActiveTab("home"); setCatalogCategory("all"); }}
+                className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shrink-0 ${
+                  activeTab === "home" && catalogCategory === "all"
+                    ? "bg-red-600 text-white shadow-md shadow-red-100 dark:shadow-none"
+                    : "bg-white hover:bg-gray-100 text-neutral-600 dark:bg-stone-900 dark:text-gray-300 dark:hover:bg-stone-850"
+                }`}
+              >
+                <span>🌍 All Specialties</span>
+              </button>
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    if (cat.id === "burgers" || cat.id === "sides") {
+                      setActiveTab("food");
+                      setCatalogCategory(cat.id);
+                    } else if (cat.id === "drinks") {
+                      setActiveTab("drinks");
+                      setCatalogCategory("drinks");
+                    } else {
+                      setActiveTab("home");
+                      setCatalogCategory("desserts");
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shrink-0 ${
+                    (activeTab === "food" && catalogCategory === cat.id) ||
+                    (activeTab === "drinks" && cat.id === "drinks" && catalogCategory === "drinks") ||
+                    (activeTab === "home" && cat.id === "desserts" && catalogCategory === "desserts")
+                      ? "bg-red-600 text-white shadow-md"
+                      : "bg-white hover:bg-gray-100 text-neutral-600 dark:bg-stone-900 dark:text-gray-300 dark:hover:bg-stone-850"
+                  }`}
+                >
+                  <span>{cat.icon} {cat.title}</span>
+                </button>
+              ))}
+              <button
+                onClick={() => setActiveTab("favorites")}
+                className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shrink-0 ${
+                  activeTab === "favorites"
+                    ? "bg-red-600 text-white shadow-md"
+                    : "bg-white hover:bg-gray-100 text-neutral-600 dark:bg-stone-900 dark:text-gray-300 dark:hover:bg-stone-850"
+                }`}
+              >
+                <span>❤️ My Favorites</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live Advanced Filters & Search */}
+          <div className="bg-white dark:bg-stone-900 p-5 rounded-3xl border border-gray-100 dark:border-stone-850 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              {/* Client Search */}
+              <div className="relative w-full md:max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Real-time search item names, category, or ingredients..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="w-full text-sm pl-10 pr-4 py-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-hidden transition-all text-gray-800"
+                />
               </div>
 
-              {/* SEARCH & FILTER SECTION (IMMEDIATE AT THE TOP) */}
-              <section className="px-4 py-6 space-y-4 max-w-7xl w-full mx-auto" id="search-filter-section">
-                
-                {/* Search input + Advanced Filters Toggle button */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Search signature dishes, hand-cut sides, ingredients..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-white text-neutral-900 text-sm placeholder-neutral-400 pl-11 pr-10 py-3 rounded-2xl border border-neutral-200 outline-none focus:ring-2 focus:ring-[#FFC107]/30 focus:border-[#FFC107] transition-all font-sans"
-                      id="search-input-field"
+              {/* Price filter slider */}
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <span className="text-xs text-gray-400 font-mono shrink-0 uppercase">Max Price: {catalogMaxPrice} ETB</span>
+                <input
+                  type="range"
+                  min="50"
+                  max="1000"
+                  step="25"
+                  value={catalogMaxPrice}
+                  onChange={(e) => setCatalogMaxPrice(parseInt(e.target.value))}
+                  className="w-full md:w-48 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-600"
+                />
+              </div>
+
+              {/* Availability check */}
+              <label className="flex items-center gap-2 self-start md:self-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={catalogOnlyAvailable}
+                  onChange={(e) => setCatalogOnlyAvailable(e.target.checked)}
+                  className="w-4.5 h-4.5 rounded text-red-600 border-neutral-300 focus:ring-red-500 cursor-pointer"
+                />
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">In Stock / Available Only</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Interactive Catalog Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {catalogItems.length === 0 ? (
+              <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
+                <div className="p-4 bg-gray-50 dark:bg-stone-900 text-gray-400 rounded-full mb-4">
+                  <ShoppingBag className="w-10 h-10" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white">No items found</h3>
+                <p className="text-sm text-gray-400 mt-1 max-w-sm font-sans leading-relaxed">
+                  We couldn't match any items. Try altering your price slider range, categories, or search term.
+                </p>
+              </div>
+            ) : (
+              catalogItems.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => viewDetails(item)}
+                  className="bg-white dark:bg-stone-900 rounded-3xl overflow-hidden border border-gray-100 dark:border-stone-850 hover:border-red-100 dark:hover:border-stone-800 hover:shadow-lg transition-all flex flex-col group cursor-pointer"
+                >
+                  {/* Item Image & Badges */}
+                  <div className="relative h-48 overflow-hidden bg-gray-100">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
                     />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery("")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-600"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
 
-                  <button
-                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-xs font-bold border transition-all ${
-                      showAdvancedFilters 
-                        ? "bg-[#121212] text-[#FFC107] border-neutral-800" 
-                        : "bg-white text-neutral-700 hover:bg-neutral-50 border-neutral-200"
-                    }`}
-                    id="btn-toggle-filters"
-                  >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    <span>Filter Options</span>
-                    {(selectedRating !== "all" || maxPrice < 700 || onlyAvailable) && (
-                      <span className="w-2 h-2 rounded-full bg-[#E53935]" />
-                    )}
-                  </button>
-                </div>
-
-                {/* Expandable Advanced Filter Panel */}
-                <AnimatePresence>
-                  {showAdvancedFilters && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden bg-white rounded-2xl p-4 border border-neutral-200 shadow-sm space-y-4"
-                      id="filters-drawer"
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        
-                        {/* 1. Price Budget Range in ETB */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold uppercase tracking-wider text-neutral-500 flex justify-between">
-                            <span>Max Budget Target</span>
-                            <span className="text-[#E53935] font-mono">{maxPrice} ETB</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="90"
-                            max="700"
-                            step="10"
-                            value={maxPrice}
-                            onChange={(e) => setMaxPrice(Number(e.target.value))}
-                            className="w-full h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-[#E53935]"
-                          />
-                          <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
-                            <span>90 ETB</span>
-                            <span>350 ETB</span>
-                            <span>700 ETB</span>
-                          </div>
-                        </div>
-
-                        {/* 2. Rating Threshold filter */}
-                        <div className="space-y-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-neutral-500 block">
-                            Rating Scale
-                          </span>
-                          <div className="flex gap-1.5">
-                            {["all", 4, 5].map((stars) => (
-                              <button
-                                key={stars}
-                                onClick={() => setSelectedRating(stars as any)}
-                                className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${
-                                  selectedRating === stars
-                                    ? "bg-[#121212] text-white border-neutral-900"
-                                    : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
-                                }`}
-                              >
-                                {stars === "all" ? (
-                                  <span>All ⭐</span>
-                                ) : (
-                                  <>
-                                    <span>{stars}+</span>
-                                    <Star className="w-3.5 h-3.5 fill-[#FFC107] text-[#FFC107]" />
-                                  </>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 3. Availability and Quick Fixes */}
-                        <div className="space-y-2 flex flex-col justify-end">
-                          <label className="flex items-center gap-3 bg-neutral-50 p-2.5 rounded-xl border border-neutral-200 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={onlyAvailable}
-                              onChange={(e) => setOnlyAvailable(e.target.checked)}
-                              className="w-4.5 h-4.5 rounded text-[#E53935] border-neutral-300 focus:ring-[#FFC107]"
-                            />
-                            <div className="text-xs">
-                              <span className="font-bold text-neutral-800 block">Available Now Only</span>
-                              <span className="text-[10px] text-neutral-400">Exclude kitchen backorders</span>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
-                        <button
-                          onClick={() => {
-                            setMaxPrice(700);
-                            setSelectedRating("all");
-                            setOnlyAvailable(false);
-                            setSearchQuery("");
-                          }}
-                          className="px-4 py-1.5 rounded-xl text-neutral-500 hover:text-neutral-800 text-xs font-bold"
-                        >
-                          Reset Filters
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* HORIZONTAL CATEGORY SCROLL LIST (With Icons + Custom Labels) */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-widest font-black text-neutral-400 font-mono">
-                      {activeTab === "home" ? "Full Catalog" : `${activeTab} specialties`}
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-[#E53935] bg-red-50 px-2.5 py-0.5 rounded-full">
-                      {filteredMenuItems.length} Dishes Found
-                    </span>
-                  </div>
-
-                  {/* Scrolling chips layout wrapper */}
-                  <div className="flex gap-2.5 overflow-x-auto no-scrollbar py-1" id="category-scroller-track">
-                    <button
-                      onClick={() => setSelectedSubCategory("all")}
-                      className={`flex-shrink-0 flex items-center gap-1.5 px-4.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                        selectedSubCategory === "all"
-                          ? "bg-[#121212] text-white shadow-md scale-[1.02]"
-                          : "bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200"
-                      }`}
-                      id="cat-pill-all"
-                    >
-                      🍽️ Show All
-                    </button>
-                    {categories.map((cat) => {
-                      const isSelected = selectedSubCategory === cat.id;
-                      return (
-                        <button
-                          key={cat.id}
-                          onClick={() => setSelectedSubCategory(cat.id)}
-                          className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                            isSelected
-                              ? "bg-[#E53935] text-white shadow-md scale-[1.02]"
-                              : "bg-white hover:bg-neutral-100 text-neutral-700 border border-neutral-200"
-                          }`}
-                          id={`cat-pill-${cat.id}`}
-                        >
-                          <span className="text-sm">{cat.icon}</span>
-                          <span>{cat.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </section>
-
-              {/* TWO-COLUMN GRID (FORCING 2 CARDS PER ROW ON MOBILE, 3-4 ON TABLET, 4-6 ON DESKTOP) */}
-              <section className="px-4 pb-28 max-w-7xl mx-auto w-full flex-1" id="menu-items-grid">
-                
-                {filteredMenuItems.length === 0 ? (
-                  <div className="py-20 text-center text-neutral-500 space-y-4 bg-white rounded-3xl border border-neutral-200/80 p-6 max-w-md mx-auto shadow-sm">
-                    <div className="w-16 h-16 bg-neutral-50/50 rounded-full flex items-center justify-center mx-auto border border-neutral-100">
-                      <UtensilsCrossed className="w-8 h-8 text-neutral-300" />
+                    {/* Popular / New Tags */}
+                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                      {item.isPopular && (
+                        <span className="bg-amber-500 text-neutral-900 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Flame className="w-3 h-3 fill-neutral-900" /> Popular
+                        </span>
+                      )}
+                      {item.isNew && (
+                        <span className="bg-red-600 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">
+                          NEW
+                        </span>
+                      )}
                     </div>
+
+                    {/* Favorite Trigger */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (favorites.includes(item.id)) {
+                          setFavorites(favorites.filter((id) => id !== item.id));
+                          showToast("Removed from My Favorites.");
+                        } else {
+                          setFavorites([...favorites, item.id]);
+                          showToast("Added to My Favorites!");
+                        }
+                      }}
+                      className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-full shadow-md transition-colors text-gray-400 hover:text-red-500 cursor-pointer"
+                    >
+                      <Heart className={`w-4.5 h-4.5 ${favorites.includes(item.id) ? "text-red-600 fill-red-600 animate-pulse" : ""}`} />
+                    </button>
+                  </div>
+
+                  {/* Card Content */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                     <div className="space-y-1.5">
-                      <p className="font-display font-black text-neutral-800 text-lg">No Items Match Filter</p>
-                      <p className="text-xs text-neutral-400 leading-relaxed">
-                        Try easing your search or max budget. Our kitchen has plenty of choice waiting!
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-red-600 transition-colors text-base line-clamp-1">
+                          {item.name}
+                        </h4>
+                        <span className="text-sm font-black text-red-600 shrink-0 font-mono">
+                          {item.price} ETB
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                        {item.shortDescription}
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        setSelectedSubCategory("all");
-                        setMaxPrice(700);
-                        setSelectedRating("all");
-                        setOnlyAvailable(false);
-                      }}
-                      className="px-5 py-2 bg-[#121212] text-white text-xs font-bold rounded-xl shadow-sm hover:bg-neutral-800"
-                    >
-                      Reset Catalog filters
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-                    {filteredMenuItems.map((item) => {
-                      const isLiked = favorites.includes(item.id);
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-white rounded-2xl border border-neutral-205/90 flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-lg hover:border-amber-200 transition-all duration-300 group cursor-pointer relative"
-                          onClick={() => setSelectedItemId(item.id)}
-                          id={`card-${item.id}`}
-                        >
-                          {/* Top Badges & Favorite button */}
-                          <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-                            {item.isPopular && (
-                              <span className="bg-[#E53935] text-white font-mono text-[8px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded shadow-sm">
-                                POPULAR
-                              </span>
-                            )}
-                            {item.isNew && (
-                              <span className="bg-indigo-600/90 text-white font-mono text-[8px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded shadow-sm">
-                                NEW
-                              </span>
-                            )}
-                          </div>
 
-                          <button
-                            onClick={(e) => toggleFavorite(item.id, e)}
-                            className="absolute top-2 right-2 z-10 p-2 rounded-full bg-white/90 text-neutral-400 hover:text-[#E53935] backdrop-blur-md shadow-sm transition-all"
-                            title="Add to favorites"
-                          >
-                            <Heart className={`w-3.5 h-3.5 ${isLiked ? "fill-[#E53935] text-[#E53935]" : ""}`} />
-                          </button>
-
-                          {/* Food Card Image */}
-                          <div className="w-full h-28 sm:h-36 bg-neutral-100 overflow-hidden relative">
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              referrerPolicy="no-referrer"
-                            />
-                            {!item.isAvailable && (
-                              <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center">
-                                <span className="bg-white text-neutral-900 font-mono text-[9px] font-bold px-2 py-0.5 rounded-full">
-                                  Backorder
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Food Body info */}
-                          <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2">
-                            
-                            {/* Star indicators & review count */}
-                            <div className="flex items-center gap-1 text-[10px] text-neutral-500 font-medium">
-                              <Star className="w-3 h-3 fill-[#FFC107] text-[#FFC107]" />
-                              <span className="text-neutral-900 font-bold">{item.rating}</span>
-                              <span className="text-neutral-400 font-mono">({item.reviewsCount})</span>
-                            </div>
-
-                            {/* Clickable Card Title */}
-                            <div>
-                              <h3 className="font-display font-black text-neutral-900 text-xs sm:text-sm tracking-tight leading-snug group-hover:text-[#E53935] transition-colors">
-                                {item.name}
-                              </h3>
-                              <p className="text-[11px] text-neutral-400 font-light leading-tight line-clamp-2 mt-0.5">
-                                {item.shortDescription}
-                              </p>
-                            </div>
-
-                            {/* Price Line ETB */}
-                            <div className="flex items-center justify-between pt-1 border-t border-neutral-100">
-                              <span className="font-mono text-[#E53935] text-xs sm:text-sm font-black">
-                                {item.price} ETB
-                              </span>
-                              <span className="text-[9px] uppercase font-mono font-bold text-neutral-400 flex items-center gap-0.5 group-hover:text-black transition-colors">
-                                Details →
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              {/* FIXED BOTTOM NAVIGATION BAR BAR FOR MOBILES */}
-              <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-neutral-200 py-2.5 px-4 shadow-2xl z-40" id="bottom-bar-nav">
-                <div className="max-w-md mx-auto flex items-center justify-around">
-                  
-                  {/* Home */}
-                  <button
-                    onClick={() => handleTabChange("home")}
-                    className={`flex flex-col items-center justify-center gap-1 transition-all ${
-                      activeTab === "home" ? "text-[#E53935] font-extrabold" : "text-neutral-400 hover:text-neutral-600"
-                    }`}
-                  >
-                    <div className={`p-1 rounded-full transition-colors ${activeTab === "home" ? "bg-red-50" : ""}`}>
-                      <UtensilsCrossed className="w-5 h-5" />
-                    </div>
-                    <span className="text-[9px] uppercase tracking-wider font-mono">Home</span>
-                  </button>
-
-                  {/* Food */}
-                  <button
-                    onClick={() => handleTabChange("food")}
-                    className={`flex flex-col items-center justify-center gap-1 transition-all ${
-                      activeTab === "food" ? "text-[#E53935] font-extrabold" : "text-neutral-400 hover:text-neutral-600"
-                    }`}
-                  >
-                    <div className={`p-1 rounded-full transition-colors ${activeTab === "food" ? "bg-red-50" : ""}`}>
-                      <Hamburger className="w-5 h-5" />
-                    </div>
-                    <span className="text-[9px] uppercase tracking-wider font-mono">Food</span>
-                  </button>
-
-                  {/* Drinks */}
-                  <button
-                    onClick={() => handleTabChange("drinks")}
-                    className={`flex flex-col items-center justify-center gap-1 transition-all ${
-                      activeTab === "drinks" ? "text-[#E53935] font-extrabold" : "text-neutral-400 hover:text-neutral-600"
-                    }`}
-                  >
-                    <div className={`p-1 rounded-full transition-colors ${activeTab === "drinks" ? "bg-red-50" : ""}`}>
-                      <CupSoda className="w-5 h-5" />
-                    </div>
-                    <span className="text-[9px] uppercase tracking-wider font-mono">Drinks</span>
-                  </button>
-
-                  {/* Favorites */}
-                  <button
-                    onClick={() => handleTabChange("favorites")}
-                    className={`flex flex-col items-center justify-center gap-1 transition-all relative ${
-                      activeTab === "favorites" ? "text-[#E53935] font-extrabold" : "text-neutral-400 hover:text-neutral-600"
-                    }`}
-                  >
-                    <div className={`p-1 rounded-full transition-colors ${activeTab === "favorites" ? "bg-red-50" : ""}`}>
-                      <Heart className="w-5 h-5" />
-                    </div>
-                    {favorites.length > 0 && (
-                      <span className="absolute -top-1 right-2 w-4 h-4 bg-[#E53935] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                        {favorites.length}
+                    <div className="flex items-center justify-between border-t border-gray-50 dark:border-stone-850 pt-3">
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.rating}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">({item.reviewsCount})</span>
+                      </div>
+                      <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                        item.isAvailable ? "text-emerald-600" : "text-red-400"
+                      }`}>
+                        {item.isAvailable ? "● In Stock" : "● Sold Out"}
                       </span>
-                    )}
-                    <span className="text-[9px] uppercase tracking-wider font-mono">Liked</span>
-                  </button>
-                </div>
-              </nav>
-
-            </motion.div>
-          ) : !loggedInAdmin ? (
-            // ====================================================================
-            //                        2. ADMIN LOGIN GATEKEEPER                    //
-            // ====================================================================
-            <motion.div
-              key="admin-login-page"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              className="flex-1 flex items-center justify-center min-h-[85vh] px-4 py-12 md:py-24 bg-neutral-50 dark:bg-stone-950 transition-colors"
-              id="admin-login-root"
-            >
-              <div className="max-w-md w-full bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-[2.5rem] shadow-2xl p-8 md:p-10 space-y-6 relative overflow-hidden">
-                {/* Visual Background Accent Glows */}
-                <div className="absolute top-[-50px] right-[-50px] w-48 h-48 bg-[#FFC107]/10 dark:bg-[#FFC107]/5 rounded-full blur-[80px] pointer-events-none" />
-                <div className="absolute bottom-[-50px] left-[-50px] w-48 h-48 bg-[#E53935]/10 dark:bg-[#E53935]/5 rounded-full blur-[80px] pointer-events-none" />
-
-                {/* LOGO SECTION */}
-                <div className="flex flex-col items-center text-center space-y-3.5 relative z-10">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#E53935] to-[#FFC107] flex items-center justify-center shadow-lg relative">
-                    <Flame className="w-8 h-8 text-white animate-pulse" />
-                    <span className="absolute -top-1.5 -right-1.5 text-xs select-none">🍔</span>
+                    </div>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        </main>
+      ) : (
+        /* ==================== SECURED ADMIN BACK-OFFICE ==================== */
+        <div className="flex-1 flex flex-col md:flex-row min-h-[85vh] bg-[#fdfdfd] dark:bg-stone-950 transition-colors duration-300" id="admin-view-root">
+          {!currentUser ? (
+            /* Admin Sign In form */
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-white dark:bg-stone-900 rounded-3xl shadow-xl border border-gray-100 dark:border-stone-850 p-6 sm:p-8 space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl mx-auto flex items-center justify-center">
+                    <Shield className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-black font-display text-gray-900 dark:text-white tracking-tight">Access Control Deck</h2>
+                  <p className="text-xs text-gray-400 font-sans max-w-xs mx-auto">
+                    Sign in with corporate credentials to manage menus, track view analytics and update settings.
+                  </p>
+                </div>
+
+                <form onSubmit={handleLoginSubmit} className="space-y-4 text-sm font-sans">
+                  {loginErr && (
+                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs font-semibold text-red-600 flex items-center gap-2">
+                      <XCircle className="w-4.5 h-4.5" /> {loginErr}
+                    </div>
+                  )}
+
                   <div>
-                    <h2 className="font-display font-black text-2xl md:text-3xl tracking-tight text-neutral-900 dark:text-white">
-                      Wow Burger Admin Panel
-                    </h2>
-                    <p className="text-xs text-neutral-500 dark:text-stone-400 mt-2 leading-relaxed">
-                      Sign in to manage menu items, categories, offers, and restaurant settings.
-                    </p>
-                  </div>
-                </div>
-
-                {/* LOGIN FORM */}
-                <form onSubmit={handleAdminVerifyLogin} className="space-y-4 relative z-10">
-                  {/* Validation Error Message */}
-                  {loginError && (
-                    <div className="p-3 bg-red-50 dark:bg-rose-950/20 text-xs text-[#E53935] dark:text-rose-400 font-bold rounded-2xl border border-red-200/60 dark:border-rose-900/40 flex items-center gap-2 animate-pulse">
-                      <span className="w-2 h-2 rounded-full bg-[#E53935]" />
-                      <span>{loginError}</span>
-                    </div>
-                  )}
-
-                  {/* Success Message */}
-                  {loginSuccessMsg && (
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 text-xs text-emerald-700 dark:text-emerald-400 font-bold rounded-2xl border border-emerald-250 dark:border-emerald-900/40 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      <span>{loginSuccessMsg}</span>
-                    </div>
-                  )}
-
-                  {/* Username or Email Input */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-stone-400">
-                      Username or Email
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <input
-                        type="text"
-                        value={loginUsername}
-                        onChange={(e) => setLoginUsername(e.target.value)}
-                        placeholder="admin or admin@wowburger.com"
-                        disabled={isLoggingIn}
-                        className="w-full bg-neutral-50 dark:bg-stone-900/60 text-neutral-900 dark:text-white text-sm pl-11 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-stone-805 focus:outline-none focus:ring-4 focus:ring-[#FFC107]/10 focus:border-[#FFC107] transition-all font-sans"
-                        id="login-username-input"
-                      />
-                    </div>
+                    <label className="block text-[10px] font-bold font-mono uppercase tracking-widest text-gray-400 mb-1.5">Username</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. superadmin"
+                      value={loginUser}
+                      onChange={(e) => setLoginUser(e.target.value)}
+                      className="w-full p-3 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-hidden transition-all text-gray-800"
+                    />
                   </div>
 
-                  {/* Password Input */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-stone-400">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <input
-                        type={loginShowPassword ? "text" : "password"}
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="••••••••"
-                        disabled={isLoggingIn}
-                        className="w-full bg-neutral-50 dark:bg-stone-900/60 text-neutral-900 dark:text-white text-sm pl-11 pr-10 py-3 rounded-2xl border border-neutral-200 dark:border-stone-805 focus:outline-none focus:ring-4 focus:ring-[#FFC107]/10 focus:border-[#FFC107] transition-all font-sans"
-                        id="login-password-input"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setLoginShowPassword(!loginShowPassword)}
-                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-stone-200 cursor-pointer"
-                        title={loginShowPassword ? "Hide Password" : "Show Password"}
-                      >
-                        {loginShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-bold font-mono uppercase tracking-widest text-gray-400 mb-1.5">Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={loginPass}
+                      onChange={(e) => setLoginPass(e.target.value)}
+                      className="w-full p-3 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-hidden transition-all text-gray-800"
+                    />
                   </div>
 
-                  {/* Remember Me & Links */}
-                  <div className="flex items-center justify-between pt-1 select-none">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4.5 h-4.5 rounded border-neutral-300 dark:border-stone-700 text-[#E53935] focus:ring-[#E53935] cursor-pointer"
-                      />
-                      <span className="text-xs text-neutral-500 dark:text-stone-400">Remember Me</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        showToast("Password recovery email triggered inside simulated environment! 📨");
-                      }}
-                      className="text-xs text-[#E53935] hover:underline font-bold"
-                    >
-                      Forgot Password?
-                    </button>
-                  </div>
-
-                  {/* Action Button */}
                   <button
                     type="submit"
-                    disabled={isLoggingIn}
-                    className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#E53935] to-[#FFC107] text-white font-extrabold text-xs uppercase tracking-wider shadow-lg hover:shadow-xl hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-80 font-sans"
-                    id="btn-login-submit"
+                    disabled={loginLoading}
+                    className="w-full py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-50 text-white font-bold rounded-xl shadow-md cursor-pointer transition-all"
                   >
-                    {isLoggingIn ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Verifying Session...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Unlock className="w-3.5 h-3.5" />
-                        <span>Enter Dashboard</span>
-                      </>
-                    )}
+                    {loginLoading ? "Authorizing Security..." : "Secure Sign In"}
                   </button>
                 </form>
 
-                {/* Back Link */}
-                <div className="text-center pt-1 relative z-10 font-sans">
-                  <button
-                    onClick={() => setIsAdminPortalOpen(false)}
-                    className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-stone-200 transition-all inline-flex items-center gap-1.5 hover:underline cursor-pointer"
-                    id="btn-return-dining"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    <span>Return to Dining App</span>
-                  </button>
+                <div className="bg-amber-50 p-3 rounded-2xl border border-amber-100 text-[10px] text-amber-800 font-mono leading-relaxed">
+                  <p className="font-bold">🔑 System Default Accounts:</p>
+                  <p className="mt-1">Username: <span className="font-black bg-white/75 px-1 rounded-sm">superadmin</span> | Pass: <span className="font-black bg-white/75 px-1 rounded-sm">admin123</span></p>
+                  <p className="mt-0.5">Username: <span className="font-black bg-white/75 px-1 rounded-sm">menumanager</span> | Pass: <span className="font-black bg-white/75 px-1 rounded-sm">admin123</span></p>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ) : (
-            // ====================================================================
-            //                        3. ADMIN DASHBOARD SYSTEM                     //
-            // ====================================================================
-            <motion.div
-              key="admin-dashboard-page"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              className="flex-1 flex flex-col md:flex-row bg-slate-50 relative pb-20 md:pb-0"
-              id="admin-view-root"
-            >
-              {/* Admin Side Drawer */}
-              <aside className="w-full md:w-64 bg-[#121212] text-white p-4 flex flex-col justify-between border-r border-neutral-800" id="admin-sidebar">
+            /* Active Admin Dashboard Dashboard Frame */
+            <>
+              {/* Backoffice Left Sidebar */}
+              <aside className="w-full md:w-64 bg-gray-50 dark:bg-stone-900 border-r border-gray-100 dark:border-stone-850 p-6 flex flex-col justify-between gap-6">
                 <div className="space-y-6">
-                  
-                  {/* Account / Active Identity session status */}
-                  <div className="bg-neutral-900 p-3 rounded-2xl border border-neutral-800 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={adminUser?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"}
-                        alt="admin avatar"
-                        className="w-10 h-10 rounded-full border border-neutral-700"
-                      />
-                      <div>
-                        <h4 className="text-xs font-bold font-display text-white">{adminUser?.fullName}</h4>
-                        <span className="bg-[#FFC107] text-[#121212] font-mono text-[9px] font-black px-2 py-0.5 rounded uppercase">
-                          {adminUser?.role}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Role Switcher Drawer (To let clients test Viewer vs Super Admin restriction blocks) */}
-                    <div className="pt-2 border-t border-neutral-800 space-y-1">
-                      <label className="text-[9px] text-neutral-400 font-mono uppercase tracking-widest block font-bold">
-                        Switch demo session role:
-                      </label>
-                      <div className="flex gap-1.5">
-                        <select
-                          value={selectedRoleForLogin}
-                          onChange={(e) => {
-                            const newRole = e.target.value as any;
-                            setSelectedRoleForLogin(newRole);
-                            handleAdminLogin(newRole);
-                          }}
-                          className="bg-neutral-950 text-white text-[11px] font-semibold border border-neutral-800 rounded-lg p-1.5 w-full outline-none"
-                        >
-                          <option value="Super Admin">Super Admin</option>
-                          <option value="Admin">Admin</option>
-                          <option value="Menu Manager">Menu Manager</option>
-                          <option value="Viewer">Viewer (Read-only)</option>
-                        </select>
-                      </div>
+                  {/* Current Active User Profile */}
+                  <div className="flex items-center gap-3 bg-white dark:bg-stone-850 p-4 rounded-2xl border border-gray-100 dark:border-stone-800 shadow-xs">
+                    <img
+                      src={currentUser.avatar}
+                      alt="Admin avatar"
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-full object-cover border border-gray-100"
+                    />
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white leading-tight">{currentUser.firstName}</p>
+                      <span className="text-[10px] font-mono text-gray-400 flex items-center gap-1 mt-0.5 uppercase">
+                        <Shield className="w-3 h-3 text-red-500" /> {currentUser.role}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Sidebar Tabs Links */}
-                  <nav className="space-y-1 flex flex-col" id="admin-nav-links">
-                    {[
-                      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-                      { id: "categories", label: "Categories", icon: MenuSquare },
-                      { id: "items", label: "Menu Items", icon: MenuIcon },
-                      { id: "ingredients", label: "Ingredients", icon: Sparkle },
-                      { id: "images", label: "Images", icon: ImageIcon },
-                      { id: "offers", label: "Offers", icon: Percent },
-                      { id: "banners", label: "Banners", icon: Tags },
-                      { id: "reviews", label: "Reviews", icon: MessageSquare },
-                      { id: "settings", label: "Restaurant Settings", icon: SettingsIcon },
-                      { id: "users", label: "Admin Users", icon: UsersIcon },
-                      { id: "logs", label: "Login Logs", icon: Terminal },
-                      { id: "logout", label: "Logout (Exit)", icon: LogOut }
-                    ].map((sec) => {
-                      const IconComponent = sec.icon;
-                      const isActive = adminActiveSection === sec.id;
-                      return (
-                        <button
-                          key={sec.id}
-                          onClick={() => {
-                            if (sec.id === "logout") {
-                              setLoggedInAdmin(null);
-                              setAdminUser(null);
-                              setAdminActiveSection("dashboard");
-                              showToast("Logged out successfully. Have a nice day! 🚪");
-                            } else {
-                              setAdminActiveSection(sec.id as any);
-                            }
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer ${
-                            isActive
-                              ? "bg-[#E53935] text-white shadow-md font-extrabold"
-                              : "text-neutral-400 hover:bg-neutral-900 hover:text-white"
-                          }`}
-                        >
-                          <IconComponent className="w-4 h-4" />
-                          <span>{sec.label}</span>
-                        </button>
-                      );
-                    })}
+                  {/* Sidebar Nav links */}
+                  <nav className="flex flex-col gap-1.5 font-sans text-xs uppercase font-bold tracking-wider">
+                    {/* BI Dashboard */}
+                    <button
+                      onClick={() => setAdminTab("dashboard")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "dashboard"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <Eye className="w-4 h-4" /> BI Analytics Report
+                    </button>
+
+                    {/* Menu Items Page */}
+                    <button
+                      onClick={() => setAdminTab("menu")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "menu"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <MenuIcon className="w-4 h-4" /> Menu Items Manager
+                    </button>
+
+                    {/* Employee CRUD (only visible to Super Admin) */}
+                    {currentUser.role === "Super Admin" && (
+                      <button
+                        onClick={() => setAdminTab("employees")}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                          adminTab === "employees"
+                            ? "bg-red-600 text-white"
+                            : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                        }`}
+                      >
+                        <Users className="w-4 h-4" /> Employee Directory
+                      </button>
+                    )}
+
+                    {/* Active special Offers */}
+                    <button
+                      onClick={() => setAdminTab("offers")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "offers"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <Percent className="w-4 h-4" /> Promo Discount Offers
+                    </button>
+
+                    {/* Landing campaigns Banners */}
+                    <button
+                      onClick={() => setAdminTab("banners")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "banners"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <Plus className="w-4 h-4" /> Landing Campaigns
+                    </button>
+
+                    {/* Ingredients levels */}
+                    <button
+                      onClick={() => setAdminTab("inventory")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "inventory"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <Package className="w-4 h-4" /> Stock Inventory
+                    </button>
+
+                    {/* Audit logs (Super Admin only) */}
+                    {currentUser.role === "Super Admin" && (
+                      <button
+                        onClick={() => setAdminTab("logs")}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                          adminTab === "logs"
+                            ? "bg-red-600 text-white"
+                            : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                        }`}
+                      >
+                        <History className="w-4 h-4" /> Security Audit logs
+                      </button>
+                    )}
+
+                    {/* Security Passwords change */}
+                    <button
+                      onClick={() => setAdminTab("security")}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                        adminTab === "security"
+                          ? "bg-red-600 text-white"
+                          : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-stone-800"
+                      }`}
+                    >
+                      <Settings className="w-4 h-4" /> Access & Security
+                    </button>
                   </nav>
                 </div>
 
-                {/* Back to Client Menu indicator */}
-                <div className="pt-4 border-t border-neutral-800">
-                  <button
-                    onClick={() => setIsAdminPortalOpen(false)}
-                    className="w-full bg-neutral-900 border border-neutral-800 text-neutral-400 group hover:text-white rounded-xl py-2 px-3 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                    Back to Dining App
-                  </button>
-                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-stone-800 dark:hover:bg-stone-850 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" /> Exit Session
+                </button>
               </aside>
 
-              {/* Main Content Workspace viewport */}
-              <main className="flex-1 p-4 md:p-8 space-y-6 overflow-y-auto" id="admin-main-viewport">
-                
-                {/* Header title */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200 pb-4">
-                  <div>
-                    <h2 className="font-display font-black text-2xl md:text-3xl tracking-tight text-[#121212]">
-                      WOW Admin <span className="text-[#E53935]">Workspace</span>
-                    </h2>
-                    <p className="text-xs text-neutral-400 font-light mt-0.5">
-                      Live administration dashboard for real-time menu orchestration & customer sentiment analysis.
-                    </p>
-                  </div>
-                  
-                  {/* Status indicator */}
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 px-3.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-[11px] font-bold flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Live Feed Active
-                    </span>
-                  </div>
-                </div>
-
-                {/* ======================= TABS CONTENT: 1. DASHBOARD ======================= */}
-                {adminActiveSection === "dashboard" && (
-                  <div className="space-y-6" id="sec-dashboard">
-                    
-                    {/* STATS TILES BANNER */}
-                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-                      
-                      {/* Total Categories */}
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-205/80 shadow-sm space-y-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">
-                          Categories
-                        </span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-2xl font-black font-display text-neutral-950">
-                            {stats.totalCategories}
-                          </span>
-                          <span className="p-1 px-2 rounded-lg bg-orange-50 text-orange-600 text-xs font-mono font-bold">
-                            Live
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Total Menu Items */}
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-205/80 shadow-sm space-y-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">
-                          Menu Items
-                        </span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-2xl font-black font-display text-neutral-950">
-                            {stats.totalMenuItems}
-                          </span>
-                          <span className="p-1 px-2 rounded-lg bg-red-50 text-red-650 text-xs font-mono font-bold">
-                            {menuItems.filter(i=>i.isPopular).length} Hot
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Available Items */}
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-205/80 shadow-sm space-y-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">
-                          Active Supply
-                        </span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-2xl font-black font-display text-emerald-600">
-                            {stats.availableItems}
-                          </span>
-                          <span className="text-[10px] text-neutral-400">
-                            {menuItems.filter(i=>!i.isAvailable).length} Backorder
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Average Rating */}
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-205/80 shadow-sm space-y-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">
-                          Avg Rating
-                        </span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-2xl font-black font-display text-amber-500 flex items-center gap-1">
-                            {stats.averageRating} <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
-                          </span>
-                          <span className="text-[10px] text-neutral-400">Addis Joint #1</span>
-                        </div>
-                      </div>
-
-                      {/* Total Reviews */}
-                      <div className="bg-white p-4 rounded-2xl border border-neutral-205/80 shadow-sm space-y-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">
-                          Reviews Total
-                        </span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-2xl font-black font-display text-indigo-600">
-                            {stats.totalReviews}
-                          </span>
-                          <span className="p-1 px-2 rounded-lg bg-indigo-50 text-indigo-600 text-xs font-mono font-bold">
-                            Feed
-                          </span>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Double Columns: Left Quick View, Right Live Simulation */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      
-                      {/* Popular menu scoreboard */}
-                      <div className="bg-white p-5 rounded-3xl border border-neutral-200/95 shadow-sm space-y-4 lg:col-span-2">
-                        <h4 className="font-display font-black text-neutral-900 text-base">
-                          Our Hot Popular Sellers 🔥
-                        </h4>
-                        
-                        <div className="space-y-2.5">
-                          {menuItems.filter(i => i.isPopular).map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-2.5 hover:bg-neutral-50 rounded-xl border border-neutral-100 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-11 h-11 object-cover rounded-lg border border-neutral-200"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div>
-                                  <span className="font-bold text-xs block text-neutral-800">{item.name}</span>
-                                  <span className="text-[10px] text-neutral-400">{item.category.toUpperCase()} • {item.calories} kcal</span>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="font-mono text-[#E53935] text-xs font-black block">{item.price} ETB</span>
-                                <span className="text-[9px] text-neutral-400">⭐ {item.rating}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Simulation Actions box for easy presentation */}
-                      <div className="bg-[#121212] text-white p-5 rounded-3xl border border-neutral-800 shadow-xl space-y-4 flex flex-col justify-between">
-                        <div className="space-y-2">
-                          <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/30 text-amber-500">
-                            <Sparkle className="w-5 h-5" />
-                          </div>
-                          <h4 className="font-display font-black text-white text-base">
-                            Interactive Sandbox Play
-                          </h4>
-                          <p className="text-xs text-neutral-400 font-light leading-relaxed">
-                            Try editing prices, adding a new burger category, or posting custom reviews. All changes immediately propagate to the dining app context for live testing! Toggle back and forth.
-                          </p>
-                        </div>
-
-                        <div className="pt-4 border-t border-neutral-800">
-                          <button
-                            onClick={() => setIsAdminPortalOpen(false)}
-                            className="w-full bg-[#FFC107] text-[#121212] font-black text-xs py-3.5 rounded-xl hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/10 flex items-center justify-center gap-1.5 uppercase"
-                          >
-                            <span>Open Dining App</span>
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
+              {/* Backoffice Main Display Panels */}
+              <section className="flex-1 p-6 md:p-10 bg-white dark:bg-stone-900 transition-colors duration-300 overflow-y-auto">
+                {adminTab === "dashboard" && analyticsData && (
+                  <AnalyticsDashboard data={analyticsData} onRefresh={loadAnalytics} loading={analyticsLoading} />
                 )}
 
-                {/* ======================= TABS CONTENT: 2. CATEGORIES CRUD ======================= */}
-                {adminActiveSection === "categories" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="sec-categories">
-                    
-                    {/* List of categories */}
-                    <div className="lg:col-span-2 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-display font-black text-neutral-900 text-base">
-                          Managing Categories
-                        </h4>
-                        <span className="text-xs font-mono text-neutral-400">Total {categories.length}</span>
+                {/* MENU MANAGEMENT TAB */}
+                {adminTab === "menu" && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Specialty Menu Control System</h2>
+                        <p className="text-sm text-gray-500 font-sans mt-1">Manage food lists, catalog parameters, and multiple photo carousel files.</p>
                       </div>
+                      <button
+                        onClick={() => openEditMenuItem(null)}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Create Menu Item
+                      </button>
+                    </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {categories.map((cat) => (
-                          <div key={cat.id} className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm flex justify-between items-start">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xl">{cat.icon}</span>
-                                <span className="font-bold text-sm text-neutral-800">{cat.title}</span>
-                              </div>
-                              <p className="text-[11px] text-neutral-400 leading-tight">
-                                {cat.description}
-                              </p>
-                              <span className="inline-block text-[9px] font-mono text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded uppercase mt-2">
-                                ID Code: {cat.id}
-                              </span>
-                            </div>
+                    {/* Search, Sorting and Advanced Filters for Admin List */}
+                    <div className="bg-gray-50 dark:bg-stone-850 p-5 rounded-3xl border border-gray-100 dark:border-stone-800 space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* Keyword Search */}
+                        <div className="relative">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search name, description..."
+                            value={adminSearch}
+                            onChange={(e) => { setAdminSearch(e.target.value); setAdminPage(1); }}
+                            className="w-full text-xs pl-9 pr-3 py-2 bg-white rounded-lg border border-transparent focus:border-red-500 outline-hidden text-gray-800 font-sans"
+                          />
+                        </div>
 
-                            <div className="flex flex-col gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setEditingCategory(cat);
-                                  setCatFormId(cat.id);
-                                  setCatFormTitle(cat.title);
-                                  setCatFormIcon(cat.icon);
-                                  setCatFormDesc(cat.description);
-                                }}
-                                className="p-1.5 rounded-lg bg-neutral-50 hover:bg-neutral-100 text-neutral-600 transition-colors"
-                                title="Edit category details"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCategory(cat.id)}
-                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-[#E53935] transition-colors"
-                                title="Delete category permanently"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                        {/* Category Dropdown Filter */}
+                        <select
+                          value={adminCategory}
+                          onChange={(e) => { setAdminCategory(e.target.value); setAdminPage(1); }}
+                          className="w-full p-2 bg-white rounded-lg text-xs font-semibold outline-hidden border border-transparent focus:border-red-500 text-gray-700 font-sans"
+                        >
+                          <option value="all">Category: All</option>
+                          <option value="burgers">Burgers</option>
+                          <option value="sides">Sides</option>
+                          <option value="drinks">Drinks</option>
+                          <option value="desserts">Desserts</option>
+                        </select>
+
+                        {/* Availability Dropdown Filter */}
+                        <select
+                          value={adminOnlyAvailable}
+                          onChange={(e) => { setAdminOnlyAvailable(e.target.value as any); setAdminPage(1); }}
+                          className="w-full p-2 bg-white rounded-lg text-xs font-semibold outline-hidden border border-transparent focus:border-red-500 text-gray-700 font-sans"
+                        >
+                          <option value="all">Availability: All</option>
+                          <option value="true">In Stock</option>
+                          <option value="false">Out of Stock</option>
+                        </select>
+
+                        {/* Advanced Sorting Options */}
+                        <select
+                          value={`${adminSortBy}-${adminSortOrder}`}
+                          onChange={(e) => {
+                            const [by, order] = e.target.value.split("-");
+                            setAdminSortBy(by);
+                            setAdminSortOrder(order as any);
+                            setAdminPage(1);
+                          }}
+                          className="w-full p-2 bg-white rounded-lg text-xs font-semibold outline-hidden border border-transparent focus:border-red-500 text-gray-700 font-sans"
+                        >
+                          <option value="dateAdded-desc">Newest Added</option>
+                          <option value="dateAdded-asc">Oldest Added</option>
+                          <option value="name-asc">Name: A ➔ Z</option>
+                          <option value="name-desc">Name: Z ➔ A</option>
+                          <option value="price-asc">Price: Low to High</option>
+                          <option value="price-desc">Price: High to Low</option>
+                          <option value="viewCount-desc">Most Viewed</option>
+                        </select>
                       </div>
                     </div>
 
-                    {/* Form to Create/Edit */}
-                    <div className="bg-white p-5 rounded-3xl border border-neutral-200 shadow-sm space-y-4">
-                      <h4 className="font-display font-black text-neutral-900 text-base">
-                        {editingCategory ? "✏️ Edit Category" : "✨ Create Category"}
-                      </h4>
-                      <p className="text-xs text-neutral-400 leading-normal">
-                        Add a new custom food section with custom emoji representative icon. This category immediately joins the scroll header!
-                      </p>
-
-                      <form onSubmit={handleSaveCategory} className="space-y-3.5 pt-2">
-                        
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Unique ID Code (No spaces)
-                          </label>
-                          <input
-                            type="text"
-                            value={catFormId}
-                            onChange={(e) => setCatFormId(e.target.value)}
-                            disabled={!!editingCategory}
-                            placeholder="e.g. tacos, wraps"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2 w-full text-xs text-neutral-800 disabled:opacity-60 outline-none focus:ring-2 focus:ring-[#FFC107]/30"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Title Name
-                          </label>
-                          <input
-                            type="text"
-                            value={catFormTitle}
-                            onChange={(e) => setCatFormTitle(e.target.value)}
-                            placeholder="e.g. Gourmet Wraps"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2 w-full text-xs text-neutral-800 outline-none focus:ring-2 focus:ring-[#FFC107]/30"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Emoji Icon
-                          </label>
-                          <input
-                            type="text"
-                            value={catFormIcon}
-                            onChange={(e) => setCatFormIcon(e.target.value)}
-                            placeholder="e.g. 🌯"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2 w-full text-xs text-neutral-800 outline-none focus:ring-2 focus:ring-[#FFC107]/30"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Explanation Description
-                          </label>
-                          <textarea
-                            value={catFormDesc}
-                            onChange={(e) => setCatFormDesc(e.target.value)}
-                            placeholder="Briefly state flavor themes of category..."
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2 w-full text-xs text-neutral-800 h-16 outline-none focus:ring-2 focus:ring-[#FFC107]/30"
-                            required
-                          />
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            type="submit"
-                            className="flex-1 bg-[#121212] text-white font-bold text-xs py-2.5 rounded-xl hover:bg-neutral-800 transition-colors"
-                          >
-                            Save Category
-                          </button>
-                          {editingCategory && (
-                            <button
-                              type="button"
-                              onClick={resetCategoryForm}
-                              className="px-3 py-2 border border-neutral-205/85 rounded-xl text-neutral-500 hover:text-neutral-800 text-xs font-bold"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </form>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: 3. MENU ITEMS CRUD ======================= */}
-                {adminActiveSection === "items" && (
-                  <div className="space-y-6" id="sec-menu-items">
-                    
-                    {/* Add Item or Edit toggle banner */}
-                    <div className="bg-white p-5 rounded-3xl border border-neutral-200 shadow-sm space-y-4">
-                      
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-display font-black text-neutral-900 text-base">
-                          {editingItem ? `✏️ Revise: ${editingItem.name}` : "✨ Add New Dish / Menu Item"}
-                        </h4>
-                        {editingItem && (
-                          <button
-                            onClick={resetItemForm}
-                            className="text-xs font-semibold text-[#E53935] hover:underline"
-                          >
-                            Clear Form & Add New
-                          </button>
-                        )}
+                    {/* Server-side Paginated Table View */}
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50/50 border-b border-gray-100 text-xs text-gray-400 font-mono uppercase tracking-wider">
+                              <th className="py-4 px-6">Specialty Item</th>
+                              <th className="py-4 px-6">Category</th>
+                              <th className="py-4 px-6">Price</th>
+                              <th className="py-4 px-6">Analytics Views</th>
+                              <th className="py-4 px-6">Stock Availability</th>
+                              <th className="py-4 px-6 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 text-sm font-sans text-gray-800">
+                            {adminItems.map((item) => (
+                              <tr key={item.id} className="hover:bg-gray-50/40 transition-colors">
+                                <td className="py-4 px-6">
+                                  <div className="flex items-center gap-3">
+                                    <img src={item.image} alt="" className="w-10 h-10 rounded-xl object-cover shadow-xs border border-gray-100" />
+                                    <div>
+                                      <p className="font-semibold text-gray-900 leading-tight">{item.name}</p>
+                                      <span className="text-[10px] text-gray-400 font-mono">Calories: {item.calories} kcal</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-6 text-xs font-mono uppercase font-bold text-gray-500">{item.category}</td>
+                                <td className="py-4 px-6 font-bold font-mono text-red-600">{item.price} ETB</td>
+                                <td className="py-4 px-6 font-semibold font-mono text-gray-600">
+                                  <span className="flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> {item.viewCount} views</span>
+                                </td>
+                                <td className="py-4 px-6">
+                                  <span className={`inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-md font-mono ${
+                                    item.isAvailable ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-400"
+                                  }`}>
+                                    {item.isAvailable ? "In Stock" : "Sold Out"}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => openEditMenuItem(item)}
+                                      className="p-1.5 hover:bg-gray-100 text-gray-500 hover:text-blue-600 rounded-lg cursor-pointer transition-colors"
+                                      title="Edit details & images"
+                                    >
+                                      <Settings className="w-4 h-4 animate-spin-hover" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteMenuItem(item.id)}
+                                      className="p-1.5 hover:bg-gray-100 text-gray-500 hover:text-red-600 rounded-lg cursor-pointer transition-colors"
+                                      title="Purge record"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
 
-                      <form onSubmit={handleSaveMenuItem} className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                        
+                      {/* Pagination UI Controls */}
+                      <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 bg-gray-50/50 border-t border-gray-100 gap-4 text-xs font-mono text-gray-500">
+                        {/* Info details */}
                         <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Code ID (lowercase, e.g. classic-wow)
-                          </label>
-                          <input
-                            type="text"
-                            value={itemFormId}
-                            onChange={(e) => setItemFormId(e.target.value)}
-                            disabled={!!editingItem}
-                            placeholder="e.g. smash-avocado"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
+                          Showing page <span className="font-bold text-gray-800">{adminPage}</span> of <span className="font-bold text-gray-800">{Math.ceil(adminTotalItems / adminLimit) || 1}</span> (Total item matching: <span className="font-bold text-gray-800">{adminTotalItems}</span>)
                         </div>
 
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Dish Name
-                          </label>
-                          <input
-                            type="text"
-                            value={itemFormName}
-                            onChange={(e) => setItemFormName(e.target.value)}
-                            placeholder="Gourmet Chili slider"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Price (ETB Birr)
-                          </label>
-                          <input
-                            type="number"
-                            value={itemFormPrice}
-                            onChange={(e) => setItemFormPrice(Number(e.target.value))}
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Primary Category
-                          </label>
+                        {/* Page sizes */}
+                        <div className="flex items-center gap-2">
+                          <span>Page size:</span>
                           <select
-                            value={itemFormCategory}
-                            onChange={(e) => setItemFormCategory(e.target.value as any)}
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
+                            value={adminLimit}
+                            onChange={(e) => { setAdminLimit(parseInt(e.target.value)); setAdminPage(1); }}
+                            className="p-1.5 bg-white rounded-md border text-xs font-bold font-mono outline-hidden text-gray-700"
                           >
-                            <option value="burgers">Burgers</option>
-                            <option value="sides">Sides</option>
-                            <option value="drinks">Drinks</option>
-                            <option value="desserts">Desserts</option>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
                           </select>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Energy Content (kcal)
-                          </label>
-                          <input
-                            type="number"
-                            value={itemFormCalories}
-                            onChange={(e) => setItemFormCalories(Number(e.target.value))}
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Photo Asset URL
-                          </label>
-                          <input
-                            type="text"
-                            value={itemFormImage}
-                            onChange={(e) => setItemFormImage(e.target.value)}
-                            placeholder="Enter image URL"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                          <p className="text-[9px] text-neutral-450 mt-1 block">
-                            Use local file or paste Unsplash food image URL.
-                          </p>
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Ingredients (Comma-separated list)
-                          </label>
-                          <input
-                            type="text"
-                            value={itemFormIngredients}
-                            onChange={(e) => setItemFormIngredients(e.target.value)}
-                            placeholder="Cheddar Cheese, Beef Patty, Grilled Onion, BBQ Glaze"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Short Menu Card Description
-                          </label>
-                          <textarea
-                            value={itemFormShortDesc}
-                            onChange={(e) => setItemFormShortDesc(e.target.value)}
-                            placeholder="Appealing short prompt for the interactive cards..."
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full h-14 text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Detailed Epicurean Full Description
-                          </label>
-                          <textarea
-                            value={itemFormFullDesc}
-                            onChange={(e) => setItemFormFullDesc(e.target.value)}
-                            placeholder="Expanded narrative details shown when customers view details of product..."
-                            className="bg-slate-50 border border-neutral-200 rounded-xl px-3 py-2.5 w-full h-20 text-xs text-neutral-800 outline-none"
-                          />
-                        </div>
-
-                        {/* Boolean checkboxes */}
-                        <div className="md:col-span-3 flex flex-wrap gap-4 pt-2 border-t border-neutral-100">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={itemFormIsAvailable}
-                              onChange={(e) => setItemFormIsAvailable(e.target.checked)}
-                              className="rounded text-[#E53935] focus:ring-[#FFC107] w-4 h-4"
-                            />
-                            <span className="font-bold text-[#121212]">In Stock / Available</span>
-                          </label>
-
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={itemFormIsPopular}
-                              onChange={(e) => setItemFormIsPopular(e.target.checked)}
-                              className="rounded text-[#E53935] focus:ring-[#FFC107] w-4 h-4"
-                            />
-                            <span className="font-bold text-[#E53935]">Show Hot Popular Badge</span>
-                          </label>
-
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={itemFormIsNew}
-                              onChange={(e) => setItemFormIsNew(e.target.checked)}
-                              className="rounded text-[#E53935] focus:ring-[#FFC107] w-4 h-4"
-                            />
-                            <span className="font-bold text-indigo-650">Show New Release Badge</span>
-                          </label>
-                        </div>
-
-                        <div className="md:col-span-3 pt-3 flex justify-end gap-2">
+                        {/* Prev / Next triggers */}
+                        <div className="flex items-center gap-2.5">
                           <button
-                            type="submit"
-                            className="bg-[#E53935] text-white font-black uppercase text-xs px-6 py-3 rounded-xl hover:bg-red-750 transition-colors shadow-lg shadow-red-500/10"
+                            onClick={() => setAdminPage(prev => Math.max(1, prev - 1))}
+                            disabled={adminPage === 1}
+                            className="p-1.5 bg-white border rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition-colors cursor-pointer"
+                            title="Previous Page"
                           >
-                            Save Menu Item Changes
+                            <ChevronLeft className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => setAdminPage(prev => Math.min(Math.ceil(adminTotalItems / adminLimit), prev + 1))}
+                            disabled={adminPage >= Math.ceil(adminTotalItems / adminLimit)}
+                            className="p-1.5 bg-white border rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition-colors cursor-pointer"
+                            title="Next Page"
+                          >
+                            <ChevronRight className="w-4 h-4 text-gray-600" />
                           </button>
                         </div>
-                      </form>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub components calling */}
+                {adminTab === "employees" && currentUser.role === "Super Admin" && (
+                  <EmployeeManagement onNotify={showToast} />
+                )}
+
+                {/* OFFERS CAMPAIGNS TAB */}
+                {adminTab === "offers" && (
+                  <div className="space-y-6 animate-fade-in text-sm text-gray-800">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Active Promotional Offers</h2>
+                        <p className="text-sm text-gray-500 font-sans mt-1">Configure active customer coupons, discount rates, and validity periods.</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingOffer(null);
+                          setOfferTitle("");
+                          setOfferSubtitle("");
+                          setOfferCode("");
+                          setOfferDiscount("15");
+                          setOfferValidity("");
+                          setOfferActive(true);
+                          setIsOfferModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Add Special Offer
+                      </button>
                     </div>
 
-                    {/* Interactive table list to edit items */}
-                    <div className="bg-white rounded-3xl border border-neutral-200 shadow-sm overflow-hidden">
-                      <div className="p-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
-                        <span className="font-display font-black text-xs text-neutral-500 uppercase tracking-wider">
-                          Compiled Menu Items Database ({menuItems.length})
-                        </span>
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {offersList.map((off) => (
+                        <div key={off.id} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-xs space-y-4 flex flex-col justify-between relative overflow-hidden">
+                          <div className="space-y-2">
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-bold font-mono px-2.5 py-1 rounded-md uppercase">
+                              Promo Code: {off.promoCode}
+                            </span>
+                            <h3 className="text-lg font-bold text-gray-900 mt-1">{off.title}</h3>
+                            <p className="text-xs text-gray-500 font-sans leading-relaxed">{off.subtitle}</p>
+                            <div className="flex gap-4 text-xs font-mono pt-2 text-gray-400">
+                              <span>Validity: {off.validity}</span>
+                              <span className={off.isActive ? "text-emerald-600" : "text-red-400"}>
+                                {off.isActive ? "● Active" : "● Paused"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="border-t border-gray-50 pt-4 flex items-center justify-between">
+                            <span className="text-3xl font-black text-red-600 font-mono">{off.discountPercent}% OFF</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingOffer(off);
+                                  setOfferTitle(off.title);
+                                  setOfferSubtitle(off.subtitle);
+                                  setOfferCode(off.promoCode);
+                                  setOfferDiscount(String(off.discountPercent));
+                                  setOfferValidity(off.validity);
+                                  setOfferActive(off.isActive);
+                                  setIsOfferModalOpen(true);
+                                }}
+                                className="text-xs font-semibold hover:text-blue-600 font-mono cursor-pointer"
+                              >
+                                Edit Offer
+                              </button>
+                              <span className="text-gray-300">|</span>
+                              <button onClick={() => handleDeleteOffer(off.id)} className="text-xs font-semibold hover:text-red-500 font-mono text-red-400 cursor-pointer">
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
+                {/* BANNERS TAB */}
+                {adminTab === "banners" && (
+                  <div className="space-y-6 animate-fade-in text-sm text-gray-800">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Active Landing Campaigns</h2>
+                        <p className="text-sm text-gray-500 font-sans mt-1">Design landing showcase highlights, text prompts, and cover images.</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingBanner(null);
+                          setBannerTitle("");
+                          setBannerKicker("");
+                          setBannerImage("");
+                          setBannerCta("");
+                          setBannerLive(true);
+                          setIsBannerModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Launch Campaign
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {bannersList.map((ban) => (
+                        <div key={ban.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-xs flex flex-col justify-between relative">
+                          <div className="h-44 bg-gray-100 relative">
+                            <img src={ban.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <span className="absolute top-4 left-4 bg-black/60 text-white text-[10px] font-mono uppercase tracking-widest px-2.5 py-1 rounded-full backdrop-blur-xs font-bold">
+                              {ban.kicker}
+                            </span>
+                          </div>
+                          <div className="p-6 space-y-4">
+                            <h3 className="text-base font-bold text-gray-900">{ban.title}</h3>
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                              <span className="text-xs font-mono font-semibold text-gray-400">CTA: "{ban.ctaText}"</span>
+                              <span className={`text-xs font-bold font-mono ${ban.isLive ? "text-emerald-600" : "text-gray-400"}`}>
+                                {ban.isLive ? "● Online" : "● Offline"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* INVENTORY TAB */}
+                {adminTab === "inventory" && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Food Ingredient Inventory</h2>
+                        <p className="text-sm text-gray-500 font-sans mt-1">Track system ingredients levels, suppliers, units, and minimum safety thresholds.</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIngName("");
+                          setIngQty("100");
+                          setIngMin("30");
+                          setIngUnit("pcs");
+                          setIngSupplier("");
+                          setIsIngModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Add Ingredient
+                      </button>
+                    </div>
+
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
+                        <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-neutral-50 text-neutral-450 uppercase font-mono text-[9px] border-b border-neutral-100">
-                              <th className="p-4 font-bold">Image</th>
-                              <th className="p-4 font-bold">Dish Name</th>
-                              <th className="p-4 font-bold">Category</th>
-                              <th className="p-4 font-bold">Price</th>
-                              <th className="p-4 font-bold">In Stock</th>
-                              <th className="p-4 font-bold">Rating</th>
-                              <th className="p-4 text-right font-bold">Actions</th>
+                            <tr className="bg-gray-50/50 border-b border-gray-100 text-xs text-gray-400 font-mono uppercase tracking-wider">
+                              <th className="py-4 px-6">Ingredient</th>
+                              <th className="py-4 px-6">Volume Level</th>
+                              <th className="py-4 px-6">Min Threshold</th>
+                              <th className="py-4 px-6">Assigned Supplier</th>
+                              <th className="py-4 px-6">Status</th>
+                              <th className="py-4 px-6 text-right">Quick Restock</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-neutral-100">
-                            {menuItems.map((item) => (
-                              <tr key={item.id} className="hover:bg-neutral-50/70 transition-colors">
-                                <td className="p-4">
-                                  <img
-                                    src={item.image}
-                                    alt={item.name}
-                                    className="w-10 h-10 object-cover rounded-lg border border-neutral-200"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                </td>
-                                <td className="p-4 font-bold text-neutral-800">
-                                  <div>
-                                    <span className="block text-xs">{item.name}</span>
-                                    <span className="text-[10px] text-neutral-400 font-normal block font-mono">ID: {item.id}</span>
-                                  </div>
-                                </td>
-                                <td className="p-4 capitalize text-neutral-500">
-                                  {item.category}
-                                </td>
-                                <td className="p-4 font-mono font-bold text-neutral-800">
-                                  {item.price} ETB
-                                </td>
-                                <td className="p-4">
-                                  <span className={`p-1 px-2.5 rounded-full text-[10px] font-bold ${
-                                    item.isAvailable 
-                                      ? "bg-emerald-50 text-emerald-700" 
-                                      : "bg-red-50 text-[#E53935]"
+                          <tbody className="divide-y divide-gray-100 text-sm font-sans text-gray-800">
+                            {ingredientsList.map((ing) => (
+                              <tr key={ing.id} className="hover:bg-gray-50/40 transition-colors">
+                                <td className="py-4 px-6 font-bold text-gray-950">{ing.name}</td>
+                                <td className="py-4 px-6 font-mono font-semibold">{ing.quantity} {ing.unit}</td>
+                                <td className="py-4 px-6 font-mono text-gray-400">{ing.minStock} {ing.unit}</td>
+                                <td className="py-4 px-6 text-xs text-gray-500 font-medium">{ing.supplier}</td>
+                                <td className="py-4 px-6">
+                                  <span className={`inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-md font-mono ${
+                                    ing.status === "Good"
+                                      ? "bg-emerald-50 text-emerald-600"
+                                      : ing.status === "Low Stock"
+                                      ? "bg-amber-50 text-amber-600"
+                                      : "bg-red-50 text-red-500"
                                   }`}>
-                                    {item.isAvailable ? "Available" : "Backorder"}
+                                    {ing.status}
                                   </span>
                                 </td>
-                                <td className="p-4 text-amber-500 font-bold font-mono">
-                                  ⭐ {item.rating} ({item.reviewsCount})
-                                </td>
-                                <td className="p-4 text-right">
-                                  <div className="flex justify-end gap-1.5">
+                                <td className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-1.5 font-mono text-xs">
                                     <button
-                                      onClick={() => startEditItem(item)}
-                                      className="p-1 px-2 rounded-lg bg-neutral-50 hover:bg-neutral-100 text-neutral-700 font-medium text-[11px] flex items-center gap-1 transition-colors"
+                                      onClick={() => handleRestock(ing.id, 10)}
+                                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-md transition-colors font-bold cursor-pointer"
                                     >
-                                      <Edit3 className="w-3.5 h-3.5" /> Edit
+                                      +10
                                     </button>
                                     <button
-                                      onClick={() => handleDeleteItem(item.id)}
-                                      className="p-1 px-2 rounded-lg bg-red-50 hover:bg-red-100 text-[#E53935] font-medium text-[11px] flex items-center gap-1 transition-colors"
+                                      onClick={() => handleRestock(ing.id, 50)}
+                                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-md transition-colors font-bold cursor-pointer"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                                      +50
                                     </button>
                                   </div>
                                 </td>
@@ -2197,814 +1566,40 @@ export default function App() {
                         </table>
                       </div>
                     </div>
-
                   </div>
                 )}
 
-                {/* ======================= TABS CONTENT: 4. REVIEWS ARCHIVE ======================= */}
-                {adminActiveSection === "reviews" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="sec-reviews">
-                    
-                    {/* Reviews list */}
-                    <div className="lg:col-span-2 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-display font-black text-neutral-900 text-base">
-                          Managing Customer Sentiment Feed
-                        </h4>
-                        <span className="text-xs font-mono text-neutral-400">Total {reviews.length} archive entries</span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {reviews.map((rev) => {
-                          const item = menuItems.find(it => it.id === rev.itemId);
-                          return (
-                            <div key={rev.id} className="bg-white p-4.5 rounded-2xl border border-neutral-200/80 shadow-sm flex gap-4">
-                              <div className="flex-1 space-y-2">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h5 className="font-bold text-xs text-[#121212]">{rev.customerName}</h5>
-                                    <span className="text-[10px] text-[#E53935] font-semibold bg-red-50 px-2 py-0.5 rounded mr-2">
-                                      Dish: {item?.name || rev.itemId}
-                                    </span>
-                                    <span className="text-[10px] text-neutral-450 font-mono">{rev.date}</span>
-                                  </div>
-
-                                  <div className="text-right">
-                                    <div className="flex items-center gap-0.5 text-amber-500 justify-end">
-                                      {Array.from({ length: rev.rating }).map((_, i) => (
-                                        <Star key={i} className="w-3 h-3 fill-amber-500 text-amber-500" />
-                                      ))}
-                                    </div>
-                                    <span className="text-[10px] text-neutral-400 block mt-1 font-mono">ID: {rev.id}</span>
-                                  </div>
-                                </div>
-
-                                <p className="text-xs text-neutral-600 font-light leading-relaxed">
-                                  "{rev.comment}"
-                                </p>
-                              </div>
-
-                              <div className="flex-shrink-0 self-start">
-                                <button
-                                  onClick={() => handleDeleteReview(rev.id)}
-                                  className="p-1 px-2 bg-red-50 hover:bg-red-100 text-[#E53935] rounded-xl flex items-center gap-1 text-[11px]"
-                                  title="Delete review comment"
-                                >
-                                  <Trash2 className="w-3 h-3" /> Remove
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                {/* SECURITY AUDIT LOGS TAB (Super Admin only) */}
+                {adminTab === "logs" && currentUser.role === "Super Admin" && (
+                  <div className="space-y-6 animate-fade-in text-sm text-gray-800">
+                    <div className="border-b border-gray-100 pb-5">
+                      <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Security Audit Logs & Sessions</h2>
+                      <p className="text-sm text-gray-500 font-sans mt-1">Chronological list of administrative logins, edits, and status changes.</p>
                     </div>
 
-                    {/* Form to simulate reviews */}
-                    <div className="bg-white p-5 rounded-3xl border border-neutral-200 shadow-sm space-y-4">
-                      <h4 className="font-display font-black text-neutral-900 text-base">
-                        Simulate Review Entry
-                      </h4>
-                      <p className="text-xs text-neutral-400 leading-normal">
-                        Pre-populate customer reviews for any specific menu entity to assess the rating calculations.
-                      </p>
-
-                      <form onSubmit={handleSimulateReview} className="space-y-3 pt-2">
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Select Dish Entity
-                          </label>
-                          <select
-                            value={reviewFormItem}
-                            onChange={(e) => setReviewFormItem(e.target.value)}
-                            className="bg-slate-50 border border-neutral-202 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          >
-                            <option value="">-- Choose Menu Item --</option>
-                            {menuItems.map(it => (
-                              <option key={it.id} value={it.id}>{it.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Customer Name
-                          </label>
-                          <input
-                            type="text"
-                            value={reviewFormAuthor}
-                            onChange={(e) => setReviewFormAuthor(e.target.value)}
-                            placeholder="e.g. Samuel Admasu"
-                            className="bg-slate-50 border border-neutral-202 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Star Grade Value
-                          </label>
-                          <select
-                            value={reviewFormRating}
-                            onChange={(e) => setReviewFormRating(Number(e.target.value))}
-                            className="bg-slate-50 border border-neutral-202 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                          >
-                            <option value={5}>⭐⭐⭐⭐⭐ 5 Stars</option>
-                            <option value={4}>⭐⭐⭐⭐ 4 Stars</option>
-                            <option value={3}>⭐⭐⭐ 3 Stars</option>
-                            <option value={2}>⭐⭐ 2 Stars</option>
-                            <option value={1}>⭐ 1 Star</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Customer Review Comment
-                          </label>
-                          <textarea
-                            value={reviewFormComment}
-                            onChange={(e) => setReviewFormComment(e.target.value)}
-                            placeholder="Type comment details..."
-                            className="bg-slate-50 border border-neutral-202 rounded-xl p-2 w-full h-18 text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="w-full bg-[#121212] text-white font-bold text-xs py-2.5 rounded-xl hover:bg-neutral-800 transition-colors"
-                        >
-                          Push simulated Review
-                        </button>
-                      </form>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: 5. USERS CRUD ======================= */}
-                {adminActiveSection === "users" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="sec-users">
-                    
-                    {/* Users roles board list */}
-                    <div className="lg:col-span-2 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-display font-black text-neutral-900 text-base">
-                          Administrative Privilege Hierarchy
-                        </h4>
-                        <span className="text-xs font-mono text-neutral-400">{users.length} active roles</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-35">
-                        {users.map((usr) => (
-                          <div key={usr.id} className="bg-white p-4.5 rounded-2xl border border-neutral-200 shadow-sm flex items-start gap-3 justify-between">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={usr.avatar}
-                                alt={usr.fullName}
-                                className="w-10 h-10 rounded-full border border-neutral-200"
-                              />
-                              <div>
-                                <h5 className="font-bold text-xs text-neutral-800">{usr.fullName}</h5>
-                                <span className="text-[10px] text-neutral-400 font-mono">@{usr.username}</span>
-                                <div className="mt-1">
-                                  <span className={`p-1 px-2 rounded-lg text-[9px] font-mono font-black ${
-                                    usr.role === "Super Admin" 
-                                      ? "bg-red-50 text-[#E53935]" 
-                                      : usr.role === "Admin" 
-                                      ? "bg-amber-50 text-[#FFC107]" 
-                                      : usr.role === "Menu Manager" 
-                                      ? "bg-blue-50 text-blue-600" 
-                                      : "bg-neutral-100 text-neutral-500"
-                                  }`}>
-                                    {usr.role}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col gap-1">
-                              <button
-                                onClick={() => {
-                                  setEditingUser(usr);
-                                  setUserFormUsername(usr.username);
-                                  setUserFormFullname(usr.fullName);
-                                  setUserFormRole(usr.role);
-                                  setUserFormAvatar(usr.avatar);
-                                }}
-                                className="p-1 px-2 bg-neutral-50 hover:bg-neutral-100 text-neutral-700 text-[10px] rounded"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(usr.id)}
-                                className="p-1 px-2 bg-red-50 hover:bg-red-100 text-[#E53935] text-[10px] rounded"
-                              >
-                                Terminate
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Manage Users Form */}
-                    <div className="bg-white p-5 rounded-3xl border border-neutral-200 shadow-sm space-y-4">
-                      <h4 className="font-display font-black text-neutral-900 text-base">
-                        {editingUser ? "✏️ Revise Admin Account" : "✨ Provision New Role"}
-                      </h4>
-                      <p className="text-xs text-neutral-400 leading-normal">
-                        Create user profiles with targeted permissions to test administrative workflows.
-                      </p>
-
-                      <form onSubmit={handleSaveUser} className="space-y-3 pt-2">
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Account Username
-                          </label>
-                          <input
-                            type="text"
-                            value={userFormUsername}
-                            onChange={(e) => setUserFormUsername(e.target.value)}
-                            placeholder="e.g. sileshicook"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Full Legal Name
-                          </label>
-                          <input
-                            type="text"
-                            value={userFormFullname}
-                            onChange={(e) => setUserFormFullname(e.target.value)}
-                            placeholder="e.g. Sileshi Kebede"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Privilege Role Assignment
-                          </label>
-                          <select
-                            value={userFormRole}
-                            onChange={(e) => setUserFormRole(e.target.value as any)}
-                            className="bg-slate-50 border border-neutral-200 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                          >
-                            <option value="Super Admin">Super Admin (All Access)</option>
-                            <option value="Admin">Admin</option>
-                            <option value="Menu Manager">Menu Manager</option>
-                            <option value="Viewer">Viewer (Read-Only)</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-neutral-400 font-mono font-bold uppercase tracking-wider block mb-1">
-                            Avatar URL
-                          </label>
-                          <input
-                            type="text"
-                            value={userFormAvatar}
-                            onChange={(e) => setUserFormAvatar(e.target.value)}
-                            placeholder="URL to profile picture"
-                            className="bg-slate-50 border border-neutral-200 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                          />
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            className="flex-1 bg-[#121212] text-white font-bold text-xs py-2.5 rounded-xl hover:bg-neutral-800"
-                          >
-                            Save User Account
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: 6. SETTINGS ======================= */}
-                {adminActiveSection === "settings" && (
-                  <div className="bg-white p-6 rounded-3xl border border-neutral-200 shadow-sm max-w-xl space-y-6" id="sec-settings">
-                    <div className="space-y-1.5">
-                      <h4 className="font-display font-black text-neutral-900 text-base">
-                        Global Configurations Settings
-                      </h4>
-                      <p className="text-xs text-neutral-400 leading-normal">
-                        Configure brand definitions, tax scales, and dynamic checkout features.
-                      </p>
-                    </div>
-
-                    <div className="space-y-4 pt-2 text-xs">
-                      <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-3">
-                        <h5 className="font-bold text-[#121212]">Menu Settings</h5>
-                        <div className="space-y-2.5">
-                          <label className="flex items-center justify-between">
-                            <span>Enable QR Code ordering on tables</span>
-                            <input type="checkbox" defaultChecked className="rounded text-[#E53935]" />
-                          </label>
-                          <label className="flex items-center justify-between">
-                            <span>Charge 15% VAT automatically under ETB</span>
-                            <input type="checkbox" defaultChecked className="rounded text-[#E53935]" />
-                          </label>
-                          <label className="flex items-center justify-between">
-                            <span>Display Calorie indicator to consumers</span>
-                            <input type="checkbox" defaultChecked className="rounded text-[#E53935]" />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-red-50/40 rounded-2xl border border-red-100 space-y-3">
-                        <h5 className="font-bold text-[#E53935]">Extreme Sandbox Controls</h5>
-                        <p className="text-[11px] text-neutral-500">
-                          Revert all interactive CRUD state modifications back to pristine defaults.
-                        </p>
-                        <button
-                          onClick={() => {
-                            checkPermissionAndAction(() => {
-                              localStorage.removeItem("wow_menu_items");
-                              localStorage.removeItem("wow_categories");
-                              localStorage.removeItem("wow_reviews");
-                              localStorage.removeItem("wow_users");
-                              localStorage.removeItem("wow_favorites");
-                              setMenuItems(INITIAL_MENU_ITEMS);
-                              setCategories(CATEGORIES);
-                              setReviews(INITIAL_REVIEWS);
-                              setUsers(INITIAL_USERS);
-                              setFavorites(["classic-wow", "retro-strawberry"]);
-                              showToast("🔄 Database restored completely!");
-                            });
-                          }}
-                          className="w-full bg-[#E53935] hover:bg-red-750 text-white font-bold py-2 px-3 rounded-xl transition-colors"
-                        >
-                          Factory Restore Local Database
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: INGREDIENTS ======================= */}
-                {adminActiveSection === "ingredients" && (
-                  <div className="space-y-6 animate-fade-in" id="sec-ingredients">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
-                      <div className="space-y-1">
-                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">WOW Ingredients Inventory</h3>
-                        <p className="text-xs text-neutral-400 dark:text-stone-450">Track and replenish essential kitchen stock counts in real-time.</p>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            checkPermissionAndAction(() => {
-                              const name = prompt("Enter ingredient name:");
-                              if (!name) return;
-                              const qty = parseInt(prompt("Enter initial quantity:") || "100");
-                              const min = parseInt(prompt("Enter minimal warning threshold:") || "30");
-                              const unit = prompt("Enter unit (e.g., pcs, kg, bags, liters):") || "pcs";
-                              const supplier = prompt("Enter supplier brand name:") || "Premium Foods Inc.";
-                              
-                              const nextId = ingredients.length > 0 ? Math.max(...ingredients.map(i => i.id)) + 1 : 1;
-                              const newIng = {
-                                id: nextId,
-                                name,
-                                quantity: qty,
-                                minStock: min,
-                                unit,
-                                supplier,
-                                status: (qty <= 0 ? "Out of Stock" : qty <= min ? "Low Stock" : "Good") as any
-                              };
-                              setIngredients(prev => [...prev, newIng]);
-                              showToast(`Ingredient ${name} added perfectly! 🥗`);
-                            });
-                          }}
-                          className="px-3.5 py-2 bg-[#E11D48] hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center gap-1 cursor-pointer font-sans"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Stock Item</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      <div className="lg:col-span-2 bg-white dark:bg-stone-900 rounded-3xl border border-neutral-200 dark:border-stone-800 shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-neutral-50 dark:bg-stone-800/50 border-b border-neutral-200 dark:border-stone-700/60 font-bold text-neutral-500 dark:text-stone-400">
-                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Item Name</th>
-                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Stock Level</th>
-                                <th className="p-4 uppercase tracking-wider font-mono text-[10px]">Supplier</th>
-                                <th className="p-4 uppercase tracking-wider font-mono text-[10px] text-right">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-neutral-100 dark:divide-stone-800/80">
-                              {ingredients.map((ing) => {
-                                const isLow = ing.quantity <= ing.minStock;
-                                const isOut = ing.quantity <= 0;
-                                return (
-                                  <tr key={ing.id} className="hover:bg-neutral-50/50 dark:hover:bg-stone-800/30 text-neutral-800 dark:text-stone-300">
-                                    <td className="p-4 font-bold">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`w-2 h-2 rounded-full ${isOut ? "bg-red-500" : isLow ? "bg-amber-400" : "bg-emerald-500 animate-pulse"}`} />
-                                        <span>{ing.name}</span>
-                                      </div>
-                                      <span className="text-[10px] text-neutral-400 dark:text-stone-500 font-mono block mt-0.5">Threshold: {ing.minStock} {ing.unit}</span>
-                                    </td>
-                                    <td className="p-4">
-                                      <span className={`font-mono font-bold px-2.5 py-1 rounded-lg text-[11px] ${isOut ? "bg-red-50 dark:bg-rose-950/20 text-red-650" : isLow ? "bg-amber-50 dark:bg-amber-950/25 text-amber-600" : "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600"}`}>
-                                        {ing.quantity} {ing.unit}
-                                      </span>
-                                    </td>
-                                    <td className="p-4 text-neutral-450 dark:text-stone-455 font-sans pr-2">{ing.supplier}</td>
-                                    <td className="p-4 text-right space-x-1 flex items-center justify-end">
-                                      <button
-                                        onClick={() => {
-                                          checkPermissionAndAction(() => {
-                                            const addStr = prompt(`Replenish ${ing.name} - Enter count to add:`);
-                                            if (!addStr) return;
-                                            const addVal = parseInt(addStr);
-                                            if (isNaN(addVal)) return;
-                                            
-                                            setIngredients(prev => prev.map(i => {
-                                              if (i.id === ing.id) {
-                                                const newQty = i.quantity + addVal;
-                                                return {
-                                                  ...i,
-                                                  quantity: newQty,
-                                                  status: (newQty <= 0 ? "Out of Stock" : newQty <= i.minStock ? "Low Stock" : "Good") as any
-                                                };
-                                              }
-                                              return i;
-                                            }));
-                                            showToast(`Stock updated for ${ing.name}! 📦`);
-                                          });
-                                        }}
-                                        className="px-2.5 py-1.5 bg-neutral-100 dark:bg-stone-800 hover:bg-neutral-200 dark:hover:bg-stone-700 text-neutral-700 dark:text-stone-300 rounded-lg font-bold text-[10px] cursor-pointer"
-                                      >
-                                        Restock
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          checkPermissionAndAction(() => {
-                                            setIngredients(prev => prev.filter(i => i.id !== ing.id));
-                                            showToast("Ingredient deleted! 🗑️");
-                                          });
-                                        }}
-                                        className="p-1.5 text-neutral-400 hover:text-[#E11D48] cursor-pointer"
-                                        title="Delete"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      <div className="bg-white dark:bg-stone-900 rounded-3xl border border-neutral-200 dark:border-stone-800 shadow-sm p-6 space-y-4">
-                        <h4 className="font-display font-black text-neutral-900 dark:text-white text-sm">Inventory Alert Thresholds</h4>
-                        <p className="text-xs text-neutral-450 dark:text-stone-500">Our kitchen monitors automatic low stock triggers based on typical meal orders.</p>
-                        
-                        <div className="space-y-3.5 text-xs text-neutral-700 dark:text-stone-300">
-                          {ingredients.filter(i => i.quantity <= i.minStock).length === 0 ? (
-                            <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/10 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/20 rounded-2xl flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-emerald-500 animate-pulse" />
-                              <span className="font-bold font-sans">Perfect Stock Status! All levels green.</span>
-                            </div>
-                          ) : (
-                            ingredients.filter(i => i.quantity <= i.minStock).map(i => (
-                              <div key={i.id} className="p-3.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex items-center justify-between" id={`alert-stock-${i.id}`}>
-                                <span className="font-bold text-amber-950 dark:text-amber-400">{i.name}</span>
-                                <span className="text-[10px] bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-305 px-2.5 py-1 rounded-lg font-bold font-mono">
-                                  {i.quantity} left
-                                </span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: IMAGES ======================= */}
-                {adminActiveSection === "images" && (
-                  <div className="space-y-6 animate-fade-in" id="sec-images">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
-                      <div className="space-y-1">
-                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Media Library</h3>
-                        <p className="text-xs text-neutral-400 dark:text-stone-450">Manage vector, banner, and item thumbnail imagery storage.</p>
-                      </div>
-                      
-                      <button
-                        onClick={() => {
-                          checkPermissionAndAction(() => {
-                            const title = prompt("Enter media item title:");
-                            if (!title) return;
-                            const url = prompt("Enter Image URL:") || "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80";
-                            const cat = prompt("Category tag (e.g. burgers, drinks, banners):") || "burgers";
-                            
-                            const nextId = mediaImages.length > 0 ? Math.max(...mediaImages.map(m => m.id)) + 1 : 1;
-                            const newImg = {
-                              id: nextId,
-                              title,
-                              url,
-                              size: "450 KB",
-                              type: "image/jpeg",
-                              category: cat
-                            };
-                            setMediaImages(prev => [newImg, ...prev]);
-                            showToast(`Image ${title} registered to gallery! 📸`);
-                          });
-                        }}
-                        className="px-4 py-2 bg-neutral-900 dark:bg-stone-800 hover:bg-neutral-855 dark:hover:bg-stone-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Upload Mock Graphic</span>
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {mediaImages.map((img) => (
-                        <div key={img.id} className="group bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all relative flex flex-col justify-between" id={`image-card-${img.id}`}>
-                          <div className="aspect-square bg-slate-100 dark:bg-stone-800 relative overflow-hidden">
-                            <img
-                              src={img.url}
-                              alt={img.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              referrerPolicy="no-referrer"
-                            />
-                            <span className="absolute bottom-2 left-2 bg-black/70 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">
-                              {img.category}
-                            </span>
-                          </div>
-                          
-                          <div className="p-3.5 space-y-1.5">
-                            <h4 className="text-xs font-bold text-neutral-800 dark:text-stone-300 truncate font-display">{img.title}</h4>
-                            <div className="flex items-center justify-between font-mono text-[9px] text-neutral-400 dark:text-stone-500">
-                              <span>{img.size}</span>
-                              <span>JPG</span>
-                            </div>
-                          </div>
-
-                          <div className="p-2 border-t border-neutral-100 dark:border-stone-800/80 bg-neutral-50 dark:bg-stone-850/30 flex items-center justify-around gap-1 font-sans">
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(img.url);
-                                showToast("Copied dynamic asset path! 📋");
-                              }}
-                              className="px-2 py-1.5 text-[10px] font-bold bg-white dark:bg-stone-800 hover:bg-neutral-100 rounded-lg text-neutral-600 dark:text-stone-400 transition-colors flex-1 text-center cursor-pointer"
-                            >
-                              Copy path
-                            </button>
-                            <button
-                              onClick={() => {
-                                checkPermissionAndAction(() => {
-                                  setMediaImages(prev => prev.filter(m => m.id !== img.id));
-                                  showToast("Asset detached from server! 🗑️");
-                                });
-                              }}
-                              className="p-1 px-1.5 bg-red-50 text-red-650 hover:bg-red-100 hover:text-red-700 rounded-lg cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: OFFERS ======================= */}
-                {adminActiveSection === "offers" && (
-                  <div className="space-y-6 animate-fade-in" id="sec-offers">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
-                      <div className="space-y-1">
-                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Interactive Discount Offers</h3>
-                        <p className="text-xs text-neutral-400 dark:text-stone-450">Configure public code coupons, seasonal reductions, and discounts.</p>
-                      </div>
-                      
-                      <button
-                        onClick={() => {
-                          checkPermissionAndAction(() => {
-                            const title = prompt("Enter Offer Campaign Name:");
-                            if (!title) return;
-                            const prCode = prompt("Enter Promo Coupon Code (e.g. WOWFAST10):") || "WOWFAST50";
-                            const disPercent = parseInt(prompt("Enter Discount Percent (e.g. 15):") || "15");
-                            const subtitle = prompt("Enter subtitles text:") || "Valid on classic burger deals";
-                            const valid = prompt("Valid timeframe:") || "Till end of month";
-
-                            const nextId = offers.length > 0 ? Math.max(...offers.map(o => o.id)) + 1 : 1;
-                            const newOff = {
-                              id: nextId,
-                              title,
-                              subtitle,
-                              promoCode: prCode,
-                              discountPercent: disPercent,
-                              validity: valid,
-                              isActive: true
-                            };
-                            setOffers(prev => [...prev, newOff]);
-                            showToast(`Discount Campaign ${title} is green! 🏷️`);
-                          });
-                        }}
-                        className="px-4 py-2 bg-[#E11D48] hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Create Offer Coupon</span>
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {offers.map((off) => (
-                        <div key={off.id} className="bg-white dark:bg-stone-900 border border-neutral-205 dark:border-stone-805 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between" id={`offer-card-${off.id}`}>
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-amber-500/20 to-red-500/20 rounded-full blur-2xl pointer-events-none" />
-                          
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <span className="bg-[#E53935] text-white font-mono text-[11px] font-black px-2.5 py-1 rounded-xl">
-                                {off.discountPercent}% OFF
-                              </span>
-                              
-                              <label className="flex items-center gap-2 cursor-pointer font-sans">
-                                <input
-                                  type="checkbox"
-                                  checked={off.isActive}
-                                  onChange={(e) => {
-                                    setOffers(prev => prev.map(o => o.id === off.id ? { ...o, isActive: e.target.checked } : o));
-                                    showToast(`${off.title} Campaign status updated! 🔄`);
-                                  }}
-                                  className="w-4 h-4 rounded text-emerald-500 font-bold focus:ring-[#FFC107] cursor-pointer"
-                                />
-                                <span className={`text-[10px] font-bold ${off.isActive ? "text-emerald-600 font-black" : "text-neutral-400 font-mono"}`}>
-                                  {off.isActive ? "LIVE" : "DRAFT"}
-                                </span>
-                              </label>
-                            </div>
-
-                            <div className="space-y-1">
-                              <h4 className="font-display font-black text-neutral-955 dark:text-white text-base leading-snug">{off.title}</h4>
-                              <p className="text-xs text-neutral-500 dark:text-stone-400">{off.subtitle}</p>
-                            </div>
-                          </div>
-
-                          <div className="pt-5 mt-5 border-t border-dashed border-neutral-200 dark:border-stone-800 bg-transparent">
-                            <div className="bg-amber-100/30 dark:bg-amber-950/20 p-2.5 rounded-xl border border-dashed border-amber-300 dark:border-amber-800/60 flex items-center justify-between font-mono">
-                              <span className="text-[10.5px] text-amber-900 dark:text-amber-400">Coupon:</span>
-                              <span className="font-black text-xs text-[#E53935] tracking-widest">{off.promoCode}</span>
-                            </div>
-                            <div className="flex items-center justify-between mt-3 text-[10px] text-neutral-400 dark:text-stone-500 font-sans">
-                              <span>Validity: {off.validity}</span>
-                              <button
-                                onClick={() => {
-                                  checkPermissionAndAction(() => {
-                                    setOffers(prev => prev.filter(o => o.id !== off.id));
-                                    showToast("Offer detoured! 🗑️");
-                                  });
-                                }}
-                                className="text-neutral-400 hover:text-red-651 cursor-pointer text-[10.5px] font-bold"
-                              >
-                                Delete campaign
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: BANNERS ======================= */}
-                {adminActiveSection === "banners" && (
-                  <div className="space-y-6 animate-fade-in" id="sec-banners">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 p-6 rounded-3xl shadow-sm">
-                      <div className="space-y-1">
-                        <h3 className="font-display font-black text-neutral-900 dark:text-white text-lg">Interactive Home Page Banners</h3>
-                        <p className="text-xs text-neutral-400 dark:text-stone-450">Upload and configure promotional cards displayed prominently at customer entry.</p>
-                      </div>
-                      
-                      <button
-                        onClick={() => {
-                          checkPermissionAndAction(() => {
-                            const title = prompt("Banner Title:");
-                            if (!title) return;
-                            const kicker = prompt("Banner kicker/tagline:") || "LIMITED EDITION CAMPAIGN";
-                            const cta = prompt("CTA action button text:") || "Order Gourmet Now";
-                            const imgUrl = prompt("Banner Background Image URL:") || "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80";
-
-                            const nextId = banners.length > 0 ? Math.max(...banners.map(b => b.id)) + 1 : 1;
-                            const newBanner = {
-                              id: nextId,
-                              title,
-                              kicker,
-                              imageUrl: imgUrl,
-                              ctaText: cta,
-                              isLive: true
-                            };
-                            setBanners(prev => [...prev, newBanner]);
-                            showToast(`Banner campaign ${title} appended! 📱`);
-                          });
-                        }}
-                        className="px-4 py-2 bg-neutral-950 dark:bg-stone-800 hover:bg-neutral-850 dark:hover:bg-stone-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-sans"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add Live Banner</span>
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {banners.map((ban) => (
-                        <div key={ban.id} className="bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between" id={`banner-card-${ban.id}`}>
-                          <div className="h-40 relative bg-slate-900">
-                            <img
-                              src={ban.imageUrl}
-                              alt={ban.title}
-                              className="w-full h-full object-cover opacity-85"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-6 flex flex-col justify-end space-y-1">
-                              <span className="text-[9px] uppercase tracking-wider font-mono font-black text-[#FFC107]">{ban.kicker}</span>
-                              <h4 className="font-display font-black text-white text-lg tracking-tight leading-tight">{ban.title}</h4>
-                            </div>
-                          </div>
-
-                          <div className="p-5 flex items-center justify-between border-t border-neutral-100 dark:border-stone-800/80 bg-neutral-50/50 dark:bg-stone-850/20 text-xs">
-                            <span className="font-mono text-[10.5px] text-neutral-400 dark:text-stone-500 font-sans">CTA: <strong className="text-neutral-700 dark:text-stone-300 font-sans">{ban.ctaText}</strong></span>
-                            
-                            <div className="flex items-center gap-4 font-sans">
-                              <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={ban.isLive}
-                                  onChange={(e) => {
-                                    setBanners(prev => prev.map(b => b.id === ban.id ? { ...b, isLive: e.target.checked } : b));
-                                    showToast(`${ban.title} live status changed! 🔄`);
-                                  }}
-                                  className="w-4.5 h-4.5 rounded text-[#E53935] focus:ring-[#E53935]"
-                                />
-                                <span className="font-black text-[10px] text-neutral-500 dark:text-stone-400">{ban.isLive ? "LIVE ON APP" : "DRAFT"}</span>
-                              </label>
-
-                              <button
-                                onClick={() => {
-                                  checkPermissionAndAction(() => {
-                                    setBanners(prev => prev.filter(b => b.id !== ban.id));
-                                    showToast("Banner Campaign deleted! 🗑️");
-                                  });
-                                }}
-                                className="text-neutral-400 hover:text-red-650 transition-colors p-1 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ======================= TABS CONTENT: LOGIN LOGS ======================= */}
-                {adminActiveSection === "logs" && (
-                  <div className="bg-white dark:bg-stone-900 border border-neutral-200 dark:border-stone-800 rounded-3xl p-6 shadow-sm space-y-6 animate-fade-in" id="sec-logs">
-                    <div className="space-y-1.5 font-sans">
-                      <h4 className="font-display font-black text-neutral-900 dark:text-white text-base">Administrative Access Logs</h4>
-                      <p className="text-xs text-neutral-400 dark:text-stone-450 leading-normal">
-                        Audit security, sessions, credentials triggers, and local testing logs with relative sandbox markers.
-                      </p>
-                    </div>
-
-                    <div className="border border-neutral-200 dark:border-stone-800 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
+                        <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-neutral-50 dark:bg-stone-800/40 border-b border-neutral-200 dark:border-stone-750 font-bold text-neutral-500 dark:text-stone-400">
-                              <th className="p-3.5 font-mono text-[10px]">Attempt ID</th>
-                              <th className="p-3.5 text-[10px]">Administrator</th>
-                              <th className="p-3.5 text-[10px]">Timestamp</th>
-                              <th className="p-3.5 text-[10px]">IP Address</th>
-                              <th className="p-3.5 text-right text-[10px]">Status</th>
+                            <tr className="bg-gray-50/50 border-b border-gray-100 text-xs text-gray-400 font-mono uppercase tracking-wider">
+                              <th className="py-4 px-6">Timestamp</th>
+                              <th className="py-4 px-6">Admin Username</th>
+                              <th className="py-4 px-6">Action Performed</th>
+                              <th className="py-4 px-6">Client Host IP</th>
+                              <th className="py-4 px-6 text-right">Status</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-neutral-100 dark:divide-stone-800/80 font-mono text-[11px] text-neutral-700 dark:text-stone-300">
-                            {loginLogs.map((log) => (
-                              <tr key={log.id} className="hover:bg-neutral-50/40 dark:hover:bg-stone-850/20" id={`log-row-${log.id}`}>
-                                <td className="p-3.5 font-semibold text-neutral-400">#WOW-SEC-{log.id * 102}</td>
-                                <td className="p-3.5 font-bold font-sans text-neutral-800 dark:text-white">{log.username}</td>
-                                <td className="p-3.5 text-neutral-500 dark:text-stone-400">{log.timestamp}</td>
-                                <td className="p-3.5 text-neutral-400">{log.ip}</td>
-                                <td className="p-3.5 text-right font-sans">
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600">
+                          <tbody className="divide-y divide-gray-100 text-xs font-mono text-gray-700">
+                            {auditLogsList.map((log) => (
+                              <tr key={log.id} className="hover:bg-gray-50/40 transition-colors">
+                                <td className="py-4 px-6 text-gray-400">{new Date(log.timestamp).toLocaleString()}</td>
+                                <td className="py-4 px-6 font-bold text-gray-950">@{log.username}</td>
+                                <td className="py-4 px-6 text-gray-600 font-sans font-medium">{log.action}</td>
+                                <td className="py-4 px-6 text-gray-500">{log.ip}</td>
+                                <td className="py-4 px-6 text-right">
+                                  <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                    log.status === "Success" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
+                                  }`}>
                                     {log.status}
                                   </span>
                                 </td>
@@ -3016,283 +1611,659 @@ export default function App() {
                     </div>
                   </div>
                 )}
-              </main>
-              
-            </motion.div>
+
+                {/* ACCESS & SECURITY (PASSWORD CHANGE) TAB */}
+                {adminTab === "security" && (
+                  <PasswordChange onSuccessLogout={handleLogout} onNotify={showToast} />
+                )}
+              </section>
+            </>
           )}
-        </AnimatePresence>
+        </div>
+      )}
 
-      </div>
+      {/* Corporate footer */}
+      <footer className="bg-white dark:bg-stone-900 border-t border-gray-100 dark:border-stone-850 px-4 py-8 md:px-8 mt-auto text-center space-y-2 transition-colors duration-300">
+        <p className="text-xs text-neutral-500 dark:text-gray-400 font-sans">
+          &copy; {new Date().getFullYear()} WOW BURGER, INC. All rights reserved. Addis Ababa, Ethiopia.
+        </p>
+        <span className="text-[10px] text-gray-300 dark:text-stone-700 font-mono tracking-widest block uppercase">
+          Crafted for Excellence | Secure RBAC Session Active
+        </span>
+      </footer>
 
-      {/* ==================================================================== */}
-      {/*                    3. GOURMET CUSTOMER DETAILED MODAL                */}
-      {/* ==================================================================== */}
+      {/* ==================== CLIENT ITEM DETAIL OVERLAY DIALOG ==================== */}
       <AnimatePresence>
-        {activeDetailedItem && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#121212]/80 backdrop-blur-md z-50 overflow-y-auto flex items-center justify-center p-0 md:p-6"
-            onClick={() => setSelectedItemId(null)}
-            id="detailed-item-overlay"
-          >
+        {selectedItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" id="detailed-item-overlay">
             <motion.div
-              initial={{ y: "100%", opacity: 0.9 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: "100%", opacity: 0.9 }}
-              transition={{ type: "spring", damping: 26, stiffness: 220 }}
-              className="bg-white w-full max-w-lg min-h-screen md:min-h-0 md:max-h-[92vh] md:rounded-[2.5rem] flex flex-col overflow-hidden relative shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white dark:bg-stone-900 rounded-[2.5rem] w-full max-w-4xl shadow-2xl overflow-hidden border border-gray-100 dark:border-stone-850 flex flex-col max-h-[90vh]"
             >
-              
-              {/* Close Hover button */}
-              <button
-                onClick={() => setSelectedItemId(null)}
-                className="absolute top-4 right-4 z-30 w-9 h-9 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center backdrop-blur-md border border-white/20 shadow-md transition-colors"
-                title="Back to menu catalog"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="flex-1 overflow-y-auto pb-24" id="modal-scroller-node">
-                
-                {/* Hero High-Fidelity Food Shot */}
-                <div className="w-full h-72 sm:h-80 bg-neutral-900 relative">
-                  <img
-                    src={activeDetailedItem.image}
-                    alt={activeDetailedItem.name}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  
-                  {/* Glowing vignette fade */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent pointer-events-none" />
-                  
-                  {/* Interactive heart quick toggle on photo */}
-                  <div className="absolute bottom-4 left-4 z-10 flex flex-wrap gap-2 items-center">
-                    <span className="bg-[#E53935] text-white font-mono text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full shadow-lg">
-                      {activeDetailedItem.category.toUpperCase()}
-                    </span>
-                    {activeDetailedItem.isPopular && (
-                      <span className="bg-[#FFC107] text-[#121212] font-mono text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full shadow-lg">
-                        🔥 HOT BESTSELLER
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => toggleFavorite(activeDetailedItem.id)}
-                    className="absolute bottom-4 right-4 z-10 p-3 rounded-full bg-white/95 text-neutral-400 hover:text-[#E53935] shadow-lg"
-                  >
-                    <Heart className={`w-4 h-4 ${favorites.includes(activeDetailedItem.id) ? "fill-[#E53935] text-[#E53935]" : ""}`} />
-                  </button>
+              {/* Overlay Modal Header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-50 dark:border-stone-850 bg-gray-50/50 dark:bg-stone-850/30">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">{selectedItem.name}</h3>
+                  <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">{selectedItem.category} specialties</span>
                 </div>
-
-                {/* Body Content Description */}
-                <div className="p-6 space-y-6">
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <h3 className="font-display font-black text-neutral-950 text-2xl md:text-3xl tracking-tight leading-none">
-                        {activeDetailedItem.name}
-                      </h3>
-                      <span className="font-mono text-xl text-[#E53935] font-black bg-red-50 border border-red-100 px-4 py-1.5 rounded-2xl shadow-sm flex-shrink-0">
-                        {activeDetailedItem.price} ETB
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 pt-1.5">
-                      <span className="bg-neutral-100 border border-neutral-200 rounded-lg py-1 px-2.5 text-[11px] font-mono font-medium text-neutral-600">
-                        ⚡ {activeDetailedItem.calories} Calories
-                      </span>
-                      {activeDetailedItem.dietaryBadges.map((diet) => (
-                        <span key={diet} className="bg-emerald-50 text-emerald-700 border border-emerald-150 rounded-lg py-1 px-2.5 text-[11px] font-bold">
-                          🥬 {diet}
-                        </span>
-                      ))}
-                      <span className="bg-amber-50 border border-amber-100 rounded-lg py-1 px-2.5 text-[11px] font-mono font-bold text-amber-700 flex items-center gap-1">
-                        ⭐ {activeAverageRating} ({activeReviews.length} Reviews)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Copywriting statement */}
-                  <div className="space-y-1.5">
-                    <p className="text-xs text-[#E53935] uppercase font-mono font-black tracking-widest">
-                      Gourmet Experience Description
-                    </p>
-                    <p className="text-neutral-600 font-light text-sm leading-relaxed">
-                      {activeDetailedItem.fullDescription}
-                    </p>
-                  </div>
-
-                  {/* Checklist Ingredients list (✓ Format requested!) */}
-                  <div className="space-y-3 bg-neutral-50/50 rounded-3xl border border-neutral-100/80 p-5">
-                    <h4 className="font-display font-black text-neutral-900 text-sm tracking-tight">
-                      ✓ Sourced Ingredients
-                    </h4>
-                    
-                    <ul className="grid grid-cols-2 gap-2 text-xs text-neutral-700">
-                      {activeDetailedItem.ingredients.map((ing, k) => (
-                        <li key={k} className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-neutral-100 shadow-xs">
-                          <Check className="w-3.5 h-3.5 text-[#E53935] shrink-0" />
-                          <span className="font-semibold text-neutral-800">{ing}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Allergen Sensitivity notice */}
-                  {activeDetailedItem.allergens.length > 0 && (
-                    <div className="bg-amber-50/40 p-4.5 rounded-2xl border border-amber-100 space-y-1.5">
-                      <span className="text-[10px] font-mono uppercase tracking-widest font-black text-amber-700 block">
-                        ⚠️ Allergen Precaution Check
-                      </span>
-                      <p className="text-[11px] text-neutral-500 leading-normal font-light">
-                        This culinary recipe contains: <strong className="text-neutral-800">{activeDetailedItem.allergens.join(", ")}</strong>. Please speak with kitchen crew regarding customizations.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* CUSTOMER REVIEWS ARCHIVE SECTION */}
-                  <div className="space-y-4 pt-4 border-t border-neutral-100" id="reviews-section">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-display font-black text-neutral-900 text-sm">
-                        Total Sentiment Reviews ({activeReviews.length})
-                      </h4>
-                      <div className="flex items-center gap-1 bg-amber-50 rounded-lg p-1 px-2">
-                        <Star className="w-3.5 h-3.5 fill-[#FFC107] text-[#FFC107]" />
-                        <span className="text-xs font-bold text-neutral-800">{activeAverageRating}</span>
-                      </div>
-                    </div>
-
-                    {activeReviews.length === 0 ? (
-                      <p className="text-xs text-neutral-400 italic bg-neutral-50 p-4 rounded-xl text-center">
-                        No customer logs for this dish yet. Be the very first to comment!
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {activeReviews.map((rev) => (
-                          <div key={rev.id} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-150/90 text-xs text-neutral-600 space-y-1">
-                            <div className="flex justify-between items-center font-bold text-neutral-800">
-                              <span className="text-[12px]">{rev.customerName}</span>
-                              <div className="flex gap-0.5 text-[#FFC107]">
-                                {Array.from({ length: rev.rating }).map((_, i) => (
-                                  <Star key={i} className="w-3 h-3 fill-current text-[#FFC107]" />
-                                ))}
-                              </div>
-                            </div>
-                            <p className="font-light text-[12px] leading-relaxed">
-                              "{rev.comment}"
-                            </p>
-                            <span className="block text-[10px] text-neutral-400 text-right">{rev.date}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* NEW REVIEW SUBMISSION FORM */}
-                    <form onSubmit={handleAddReview} className="bg-slate-50 p-4.5 rounded-3xl border border-neutral-200 mt-4 space-y-3.5">
-                      <div className="space-y-1">
-                        <h5 className="font-display font-black text-xs text-neutral-800 uppercase tracking-wider">
-                          Share your gourmet review
-                        </h5>
-                        <p className="text-[10px] text-neutral-400 font-light">
-                          Post your rating or recommend ingredient modifications.
-                        </p>
-                      </div>
-
-                      {reviewSubmitMessage && (
-                        <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold text-center">
-                          {reviewSubmitMessage}
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest font-black block">Your Name</label>
-                          <input
-                            type="text"
-                            value={newReviewAuthor}
-                            onChange={(e) => setNewReviewAuthor(e.target.value)}
-                            placeholder="e.g. Elias Daniel"
-                            className="bg-white border border-neutral-200 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none"
-                            required
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest font-black block font-bold">Grade Level</label>
-                          <select
-                            value={newReviewRating}
-                            onChange={(e) => setNewReviewRating(Number(e.target.value))}
-                            className="bg-white border border-neutral-202 rounded-xl p-2 w-full text-xs text-neutral-800 outline-none font-bold"
-                          >
-                            <option value={5}>⭐⭐⭐⭐⭐ 5 Stars</option>
-                            <option value={4}>⭐⭐⭐⭐ 4 Stars</option>
-                            <option value={3}>⭐⭐⭐ 3 Stars</option>
-                            <option value={2}>⭐⭐ 2 Stars</option>
-                            <option value={1}>⭐ 1 Star</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-mono text-neutral-400 uppercase tracking-widest font-black block">Your Comment</label>
-                        <textarea
-                          value={newReviewComment}
-                          onChange={(e) => setNewReviewComment(e.target.value)}
-                          placeholder="Tell cooks how juicy the beef was..."
-                          className="bg-white border border-neutral-202 rounded-xl p-2 w-full h-20 text-xs text-neutral-800 outline-none resize-none"
-                          required
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-[#121212] hover:bg-neutral-800 text-[#FFC107] font-black text-xs py-3 rounded-xl uppercase tracking-wider shadow-md"
-                      >
-                        Publish Sentiment Review
-                      </button>
-                    </form>
-
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Pin back button */}
-              <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-white via-white to-white/70 border-t border-neutral-100 z-10">
                 <button
-                  onClick={() => setSelectedItemId(null)}
-                  className="w-full bg-[#121212] hover:bg-neutral-800 text-white font-black text-xs py-3.5 rounded-2xl uppercase tracking-widest font-mono shadow-md"
+                  onClick={() => setSelectedItem(null)}
+                  className="p-1.5 hover:bg-gray-200 dark:hover:bg-stone-800 text-gray-400 hover:text-gray-800 rounded-full cursor-pointer transition-colors"
+                  aria-label="Close"
                 >
-                  Return to Menu
+                  <XCircle className="w-6 h-6" />
                 </button>
               </div>
 
+              {/* Scrollable details wrapper */}
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8 font-sans">
+                {/* Left section: Multiple Images Carousel & Badges */}
+                <div className="space-y-4">
+                  <MenuCarousel images={selectedItemImages} fallbackImage={selectedItem.image} />
+
+                  {/* Dietary badges */}
+                  {selectedItem.dietaryBadges && selectedItem.dietaryBadges.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {selectedItem.dietaryBadges.map((badge) => (
+                        <span key={badge} className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 text-[10px] font-bold font-mono px-2.5 py-1 rounded-md border border-emerald-100 dark:border-emerald-900/40">
+                          🌿 {badge}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Calories info */}
+                  <div className="bg-gray-50 dark:bg-stone-850 p-4 rounded-2xl border border-gray-100 dark:border-stone-800 text-xs text-gray-500 flex justify-between items-center font-mono">
+                    <span>Nutritional Energy Value:</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100">{selectedItem.calories} kcal</span>
+                  </div>
+                </div>
+
+                {/* Right section: Description & Reviews */}
+                <div className="space-y-6 text-sm text-gray-800 dark:text-gray-200">
+                  <div className="space-y-3">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-2xl font-black text-red-600 font-mono">{selectedItem.price} ETB</span>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                        <span className="font-bold text-gray-900 dark:text-white">{selectedItem.rating}</span>
+                        <span className="text-xs text-gray-400">({selectedItem.reviewsCount} reviews)</span>
+                      </div>
+                    </div>
+                    <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-sans">{selectedItem.fullDescription}</p>
+                  </div>
+
+                  {/* Ingredients details list */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold font-mono text-gray-400 uppercase tracking-widest">Selected Ingredients:</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedItem.ingredients?.map((ing) => (
+                        <span key={ing} className="bg-gray-100 dark:bg-stone-800 text-gray-600 dark:text-gray-300 text-xs px-2.5 py-1 rounded-lg">
+                          {ing}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Allergens warning */}
+                  {selectedItem.allergens && selectedItem.allergens.length > 0 && (
+                    <div className="bg-rose-50 dark:bg-rose-950/20 text-xs text-red-600 dark:text-rose-400 p-3 rounded-2xl border border-red-100 dark:border-rose-900/40 flex items-start gap-2 leading-relaxed">
+                      <span className="shrink-0 mt-0.5">⚠️</span>
+                      <div>
+                        <span className="font-bold">Allergen Warning Alert:</span> This specialty recipe contains {selectedItem.allergens.join(", ")}. Please alert our waitstaff of serious dietary sensitivities.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reviews & Submission Area */}
+                  <div className="border-t border-gray-100 dark:border-stone-850 pt-5 space-y-4">
+                    <h4 className="text-base font-bold text-gray-900 dark:text-white">Customer Reviews & Ratings</h4>
+                    
+                    {/* Previous reviews */}
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                      {itemReviews.length === 0 ? (
+                        <div className="text-xs text-gray-400 italic text-center py-4">Be the first to review this legendary recipe!</div>
+                      ) : (
+                        itemReviews.map((rev) => (
+                          <div key={rev.id} className="bg-gray-50/60 dark:bg-stone-850/30 p-3.5 rounded-2xl border border-gray-100 dark:border-stone-800 text-xs space-y-1.5 leading-relaxed">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-gray-950 dark:text-white">{rev.customerName}</span>
+                              <span className="text-gray-400 font-mono">{rev.date}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star key={i} className={`w-3.5 h-3.5 ${i < rev.rating ? "text-amber-500 fill-amber-500" : "text-gray-200"}`} />
+                              ))}
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-300 font-sans">{rev.comment}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Review submission Form */}
+                    <form onSubmit={handleReviewSubmit} className="bg-neutral-50 dark:bg-stone-850/40 p-4 rounded-3xl space-y-3 text-xs">
+                      <p className="font-bold text-gray-800 dark:text-white">Write Your Feedback:</p>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Your full name"
+                          value={reviewAuthor}
+                          onChange={(e) => setReviewAuthor(e.target.value)}
+                          className="w-full p-2 bg-white rounded-lg border text-gray-800 font-sans"
+                        />
+                        <select
+                          value={reviewRating}
+                          onChange={(e) => setReviewRating(parseInt(e.target.value))}
+                          className="w-full p-2 bg-white rounded-lg border text-gray-800 font-sans font-bold text-amber-600"
+                        >
+                          <option value="5">⭐⭐⭐⭐⭐ Excellent (5/5)</option>
+                          <option value="4">⭐⭐⭐⭐ Great (4/5)</option>
+                          <option value="3">⭐⭐⭐ Good (3/5)</option>
+                          <option value="2">⭐⭐ Fair (2/5)</option>
+                          <option value="1">⭐ Poor (1/5)</option>
+                        </select>
+                      </div>
+
+                      <textarea
+                        required
+                        placeholder="Add your review comment details..."
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                        className="w-full p-2 bg-white rounded-lg border text-gray-800 font-sans h-16 resize-none"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={reviewLoading}
+                        className="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        {reviewLoading ? "Submitting feedback..." : "Publish Review Rating"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* FOOTER BLOCK */}
-      <footer className="bg-[#121212] text-neutral-500 py-10 px-4 text-center border-t border-neutral-800" id="wow-main-footer">
-        <div className="max-w-md mx-auto space-y-3.5">
-          <div className="flex items-center justify-center gap-1 text-[#FFC107] font-extrabold text-sm uppercase">
-            <span>WOW BURGER</span>
-            <span className="w-1 h-1 bg-[#E53935] rounded-full" />
-            <span>Digital Platform</span>
+      {/* ==================== EDIT/CREATE MENU ITEM DIALOG MODAL ==================== */}
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white dark:bg-stone-900 rounded-[2.5rem] w-full max-w-4xl shadow-2xl overflow-hidden border border-gray-100 dark:border-stone-850 flex flex-col max-h-[92vh]"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-red-600 animate-spin-slow" />
+                  {editingItem ? `Edit Menu Item: ${editingItem.name}` : "Create New Menu Item"}
+                </h3>
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="p-1.5 hover:bg-gray-200 text-gray-400 hover:text-gray-800 rounded-full transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Dual Column Layout: Left (Inputs Form), Right (Multiple Images Manager & Carousel Setup) */}
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8 font-sans text-sm">
+                {/* Left Form */}
+                <form onSubmit={handleSaveMenuItem} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Item Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={itemName}
+                        onChange={(e) => setItemName(e.target.value)}
+                        className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Price (ETB) *</label>
+                      <input
+                        type="number"
+                        required
+                        value={itemPrice}
+                        onChange={(e) => setItemPrice(e.target.value)}
+                        className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Category *</label>
+                      <select
+                        value={itemCat}
+                        onChange={(e) => setItemCat(e.target.value as any)}
+                        className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent focus:border-red-500 focus:ring-1"
+                      >
+                        <option value="burgers">Burgers</option>
+                        <option value="sides">Sides</option>
+                        <option value="drinks">Drinks</option>
+                        <option value="desserts">Desserts</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Energy (kcal)</label>
+                      <input
+                        type="number"
+                        value={itemCalories}
+                        onChange={(e) => setItemCalories(e.target.value)}
+                        className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Short Description *</label>
+                    <input
+                      type="text"
+                      required
+                      value={itemShortDesc}
+                      onChange={(e) => setItemShortDesc(e.target.value)}
+                      className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Full Description *</label>
+                    <textarea
+                      required
+                      value={itemFullDesc}
+                      onChange={(e) => setItemFullDesc(e.target.value)}
+                      className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent h-20 resize-none font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Primary Image Path / URL *</label>
+                    <input
+                      type="text"
+                      value={itemPrimaryImage}
+                      onChange={(e) => setItemPrimaryImage(e.target.value)}
+                      placeholder="e.g. /uploads/image-123.jpg"
+                      className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Ingredients (Comma separated)</label>
+                    <input
+                      type="text"
+                      value={itemIngredients}
+                      onChange={(e) => setItemIngredients(e.target.value)}
+                      placeholder="Beef Patty, Cheddar Cheese, WOW Sauce"
+                      className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 font-mono uppercase mb-1.5">Allergens (Comma separated)</label>
+                    <input
+                      type="text"
+                      value={itemAllergens}
+                      onChange={(e) => setItemAllergens(e.target.value)}
+                      placeholder="Wheat (Gluten), Dairy, Egg"
+                      className="w-full p-2.5 bg-gray-50 focus:bg-white rounded-xl border border-transparent"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer select-none pt-2">
+                      <input
+                        type="checkbox"
+                        checked={itemAvailable}
+                        onChange={(e) => setItemAvailable(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-gray-700">Stock Available / In Store</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer select-none pt-2">
+                      <input
+                        type="checkbox"
+                        checked={itemIsPopular}
+                        onChange={(e) => setItemIsPopular(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-gray-700">Mark as Popular</span>
+                    </label>
+                  </div>
+
+                  <div className="pt-4 border-t border-gray-100 flex justify-end gap-3.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditModalOpen(false)}
+                      className="px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-100 text-gray-600 font-semibold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold shadow-md cursor-pointer animate-pulse-hover"
+                    >
+                      Save Item Record
+                    </button>
+                  </div>
+                </form>
+
+                {/* Right: Multiple Images Manager (Requires item to be saved first) */}
+                <div className="space-y-6 border-l border-gray-100 pl-8">
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold font-mono text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <Upload className="w-4 h-4 text-red-500" /> Multiple Images Manager
+                    </h4>
+                    <p className="text-xs text-gray-400 font-sans leading-relaxed">
+                      Each menu item supports up to 5 custom images. Set one as primary or delete secondary profiles.
+                    </p>
+                  </div>
+
+                  {!editingItem ? (
+                    <div className="p-8 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-center">
+                      <SlidersHorizontal className="w-8 h-8 text-gray-300" />
+                      <p className="text-xs text-gray-400 mt-2 font-sans">
+                        Save menu item record first to activate multiple images uploads.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {/* Grid listing existing images */}
+                      <div className="grid grid-cols-2 gap-3.5">
+                        {uploadedImages.map((img) => (
+                          <div key={img.id} className="relative group rounded-xl overflow-hidden bg-gray-50 border border-gray-100 h-28 flex flex-col justify-between p-2">
+                            <img src={img.imagePath} alt="" className="absolute inset-0 w-full h-full object-cover z-0" referrerPolicy="no-referrer" />
+                            <div className="relative z-10 flex justify-between items-start">
+                              <span className={`text-[8px] font-mono font-black uppercase px-1.5 py-0.5 rounded-sm shadow-xs ${
+                                img.isPrimary ? "bg-red-600 text-white" : "bg-black/60 text-white"
+                              }`}>
+                                {img.isPrimary ? "Primary" : "Secondary"}
+                              </span>
+                              {!img.isPrimary && (
+                                <button
+                                  onClick={() => handleDeleteItemImage(img.id)}
+                                  className="p-1 bg-white/95 text-gray-500 hover:text-red-600 rounded-full shadow-xs cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {!img.isPrimary && (
+                              <button
+                                onClick={() => handleSetPrimaryImage(img.id)}
+                                className="relative z-10 w-full text-center py-1 bg-black/60 hover:bg-black/80 text-white text-[9px] font-mono uppercase font-bold tracking-widest rounded-md cursor-pointer transition-colors"
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Interactive Drag & Drop zone */}
+                      <div className="space-y-3.5 border-t border-gray-100 pt-5">
+                        <p className="text-xs font-bold text-gray-700">Upload Additional Image Profile:</p>
+                        
+                        <div className="flex items-center gap-4">
+                          <label className="flex-1 border border-dashed border-gray-300 hover:border-red-500 p-4 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50/50 transition-colors">
+                            <Upload className="w-5 h-5 text-gray-400" />
+                            <span className="text-xs text-gray-500 mt-1 font-sans">Choose Image File</span>
+                            <input
+                              type="file"
+                              accept=".jpeg,.jpg,.png,.webp"
+                              onChange={handleFileChange}
+                              className="hidden"
+                            />
+                          </label>
+
+                          {previewUrl && (
+                            <div className="w-20 h-20 rounded-xl overflow-hidden border relative bg-gray-50 shrink-0">
+                              <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                              <button
+                                onClick={() => { setPreviewUrl(null); setSelectedFile(null); }}
+                                className="absolute top-1 right-1 p-0.5 bg-black/60 text-white rounded-full cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {selectedFile && (
+                          <button
+                            type="button"
+                            disabled={uploadLoading}
+                            onClick={handleUploadImageForMenuItem}
+                            className="w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            {uploadLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                            Upload Selected Image
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </div>
-          <p className="text-xs text-neutral-400 leading-normal font-light">
-            Crafted for premium smartphone deployment. Implemented with reactive local state variables, fully authorized admin workspace control modules, and two-column gourmet menu displays.
-          </p>
-          <p className="text-[9px] text-neutral-500 font-mono">
-            Powered by Wow-Menu QR Engine • Table #08
-          </p>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== CREATE/EDIT OFFERS MODAL ==================== */}
+      <AnimatePresence>
+        {isOfferModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border space-y-4"
+            >
+              <h3 className="text-lg font-bold text-gray-900">{editingOffer ? "Edit Promo Code" : "Launch Special Offer"}</h3>
+              <form onSubmit={handleSaveOffer} className="space-y-4 text-xs font-sans">
+                <div>
+                  <label className="block font-semibold mb-1">Offer Title</label>
+                  <input type="text" required value={offerTitle} onChange={e => setOfferTitle(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Subtitle Description</label>
+                  <input type="text" value={offerSubtitle} onChange={e => setOfferSubtitle(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold mb-1">Promo Code</label>
+                    <input type="text" required value={offerCode} onChange={e => setOfferCode(e.target.value)} className="w-full p-2 border rounded-lg uppercase" />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Discount (%)</label>
+                    <input type="number" required value={offerDiscount} onChange={e => setOfferDiscount(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Validity (e.g. Daily after 10 PM)</label>
+                  <input type="text" required value={offerValidity} onChange={e => setOfferValidity(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <label className="flex items-center gap-2 pt-2 cursor-pointer">
+                  <input type="checkbox" checked={offerActive} onChange={e => setOfferActive(e.target.checked)} />
+                  <span className="font-semibold text-gray-700">Mark as Active</span>
+                </label>
+                <div className="pt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsOfferModalOpen(false)} className="px-3.5 py-2 border rounded-lg font-semibold">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold">Save Campaign</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== CREATE INGREDIENT MODAL ==================== */}
+      <AnimatePresence>
+        {isIngModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border space-y-4"
+            >
+              <h3 className="text-lg font-bold text-gray-900">Add Stock Ingredient</h3>
+              <form onSubmit={handleSaveIngredient} className="space-y-4 text-xs font-sans">
+                <div>
+                  <label className="block font-semibold mb-1">Ingredient Name</label>
+                  <input type="text" required value={ingName} onChange={e => setIngName(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold mb-1">Quantity Level</label>
+                    <input type="number" required value={ingQty} onChange={e => setIngQty(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Safety Threshold</label>
+                    <input type="number" required value={ingMin} onChange={e => setIngMin(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold mb-1">Unit</label>
+                    <input type="text" required value={ingUnit} onChange={e => setIngUnit(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Supplier Name</label>
+                    <input type="text" value={ingSupplier} onChange={e => setIngSupplier(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  </div>
+                </div>
+                <div className="pt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsIngModalOpen(false)} className="px-3.5 py-2 border rounded-lg font-semibold">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold">Register Item</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== CREATE/EDIT BANNERS MODAL ==================== */}
+      <AnimatePresence>
+        {isBannerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border space-y-4"
+            >
+              <h3 className="text-lg font-bold text-gray-900">Launch Banner Campaign</h3>
+              <form onSubmit={handleSaveBanner} className="space-y-4 text-xs font-sans">
+                <div>
+                  <label className="block font-semibold mb-1">Campaign Title</label>
+                  <input type="text" required value={bannerTitle} onChange={e => setBannerTitle(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Kicker Badge (e.g. LIMITED LAUNCH)</label>
+                  <input type="text" required value={bannerKicker} onChange={e => setBannerKicker(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Cover Image URL</label>
+                  <input type="url" value={bannerImage} onChange={e => setBannerImage(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Button CTA Text</label>
+                  <input type="text" required value={bannerCta} onChange={e => setBannerCta(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <label className="flex items-center gap-2 pt-2 cursor-pointer">
+                  <input type="checkbox" checked={bannerLive} onChange={e => setBannerLive(e.target.checked)} />
+                  <span className="font-semibold text-gray-700">Set Campaign Live</span>
+                </label>
+                <div className="pt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsBannerModalOpen(false)} className="px-3.5 py-2 border rounded-lg font-semibold">Cancel</button>
+                  <button type="submit" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold">Save Campaign</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== SCREEN COMPATIBLE BOTTOM NAVIGATION BAR ==================== */}
+      {!isAdminPortalOpen && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4 pb-safe flex justify-center pointer-events-none">
+          <motion.nav 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 260, damping: 25 }}
+            className="pointer-events-auto flex items-center justify-between w-full max-w-md sm:max-w-lg bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border border-gray-100 dark:border-stone-800/80 rounded-3xl p-2 shadow-2xl transition-all"
+            style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)" }}
+          >
+            {[
+              { id: "home", label: "Home", icon: Home, action: () => { setActiveTab("home"); setCatalogCategory("all"); } },
+              { id: "food", label: "Gourmet Food", icon: Utensils, action: () => { setActiveTab("food"); setCatalogCategory("burgers"); } },
+              { id: "drinks", label: "Craft Drinks", icon: CupSoda, action: () => { setActiveTab("drinks"); setCatalogCategory("drinks"); } },
+              { id: "favorites", label: "Favorites", icon: Heart, action: () => { setActiveTab("favorites"); } }
+            ].map((tab) => {
+              const IconComponent = tab.icon;
+              const isActive = activeTab === tab.id;
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    tab.action();
+                    // Smooth scroll to catalog
+                    setTimeout(() => {
+                      const element = document.getElementById("menu-grid-anchor");
+                      if (element) {
+                        element.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }
+                    }, 80);
+                  }}
+                  className="relative flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-3.5 sm:px-5 rounded-2xl transition-all duration-300 cursor-pointer text-center flex-1 hover:scale-105 active:scale-95"
+                >
+                  {/* Sliding Background Indicator */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="bottomNavActiveTab"
+                      className="absolute inset-0 bg-red-600/10 dark:bg-red-500/15 rounded-2xl -z-10"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+
+                  <div className="relative">
+                    <IconComponent className={`w-5 h-5 transition-colors duration-300 ${isActive ? "text-red-600 dark:text-red-500" : "text-gray-400 dark:text-gray-500"}`} />
+                    
+                    {/* Badge count for Saved Favorites */}
+                    {tab.id === "favorites" && favorites.length > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-full leading-none flex items-center justify-center animate-pulse">
+                        {favorites.length}
+                      </span>
+                    )}
+                  </div>
+
+                  <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${
+                    isActive ? "text-red-600 dark:text-red-500" : "text-gray-500 dark:text-gray-400"
+                  }`}>
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </motion.nav>
         </div>
-      </footer>
+      )}
 
     </div>
   );
